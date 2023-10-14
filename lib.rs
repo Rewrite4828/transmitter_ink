@@ -32,6 +32,8 @@ mod transmitter {
     )]
     pub enum Error {
         NameTaken,
+        NameNonexistent(Name),
+        WrongAccount(Name),
     }
 
     impl Transmitter {
@@ -56,6 +58,37 @@ mod transmitter {
                 self.names.insert(&name,&self.env().caller());
 
                 return Ok(());
+
+            }
+
+        }
+
+        #[ink(message)]
+        pub fn send_message(&mut self, from: Name, to: Name, content: Content) -> Result<(),Error> {
+
+            if let Some(account_id) = self.names.get(&from) {
+
+                if account_id != self.env().caller() {
+
+                    return Err(Error::WrongAccount(from));
+
+                }
+
+                if let Some(mut messages) = self.messages.get(&to) {
+
+                    messages.push( Message { from, content });
+
+                    return Ok(());
+
+                } else {
+
+                    return Err(Error::NameNonexistent(to));
+
+                }
+
+            } else {
+
+                return Err(Error::NameNonexistent(from));
 
             }
 
