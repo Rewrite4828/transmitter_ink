@@ -3,13 +3,63 @@
 #[ink::contract]
 mod transmitter {
 
+    use ink::storage::Mapping;
+    use ink::prelude::{string::String, vec::Vec};
+
+    pub type Name = String;
+    pub type Content = String;
+
+    #[derive(PartialEq,scale::Decode, scale::Encode)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub struct Message {
+        from: Name,
+        content: Content,
+    }
 
     #[ink(storage)]
     pub struct Transmitter {
-        
+        names: Mapping<Name,AccountId>,
+        messages: Mapping<Name,Vec<Message>>,
+    }
+
+    #[derive(PartialEq,scale::Decode, scale::Encode)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub enum Error {
+        NameTaken,
     }
 
     impl Transmitter {
+
+        #[ink(constructor)]
+        pub fn new() -> Transmitter {
+            Transmitter {
+                names: Mapping::new(),
+                messages: Mapping::new(),
+            }
+        }
+
+        #[ink(message)]
+        pub fn register_name(&mut self, name: String) -> Result<(),Error> {
+
+            if self.names.contains(&name) {
+
+                return Err(Error::NameTaken);
+
+            } else {
+
+                self.names.insert(&name,&self.env().caller());
+
+                return Ok(());
+
+            }
+
+        }
 
     }
 
