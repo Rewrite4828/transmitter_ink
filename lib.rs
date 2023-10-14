@@ -25,7 +25,7 @@ mod transmitter {
         messages: Mapping<Name,Vec<Message>>,
     }
 
-    #[derive(PartialEq,scale::Decode, scale::Encode)]
+    #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
     #[cfg_attr(
         feature = "std",
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
@@ -192,7 +192,31 @@ mod transmitter {
         /// We test a simple use case of our contract.
         #[ink::test]
         fn it_works() {
+
+            let mut transmitter = Transmitter::new();
+
+            if let Err(e) = transmitter.register_name("Alice".to_string()) { panic!("{:?}",e) };
+
+            if let Err(e) = transmitter.register_name("Bob".to_string()) { panic!("{:?}",e) };
+
+            if let Err(e) = transmitter.send_message(
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Hello, Bob!".to_string()
+            ) {
+                panic!("{:?}",e)
+            };
+
+            if let Err(e) = transmitter.get_messages("Bob".to_string()) { panic!("{:?}",e) };
             
+            if let Err(e) = transmitter.delete_message(
+                "Bob".to_string(),
+                "Alice".to_string(),
+                "Hello, Bob!".to_string()
+            ) { 
+                panic!("{:?}",e)
+            };
+
         }
     }
 
