@@ -97,6 +97,41 @@ mod transmitter {
         }
 
         #[ink(message)]
+        pub fn get_messages(&self, belonging_to: Name) -> Result<Vec<Message>,Error> {
+            
+            if let Some(account_id) = self.names.get(&belonging_to) {
+
+                if account_id != self.env().caller() {
+
+                    return Err(Error::WrongAccount(belonging_to));
+
+                }
+
+                if let Some(messages) = self.messages.get(&belonging_to) {
+
+                    if messages.len() == 0 {
+
+                        return Err(Error::NoMessages);
+
+                    }
+
+                    return Ok(messages);
+
+                } else {
+
+                    return Err(Error::NoMessages);
+
+                }
+
+            } else {
+
+                return Err(Error::NameNonexistent(belonging_to));
+
+            }
+
+        }
+
+        #[ink(message)]
         pub fn delete_message(&mut self, belonging_to: Name, from: Name, content: Content) -> Result<(),Error> {
 
             let message_to_del = Message { from, content };
