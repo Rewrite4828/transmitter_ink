@@ -40,6 +40,7 @@ mod transmitter {
 
     impl Transmitter {
 
+        /// Constructor.
         #[ink(constructor)]
         pub fn new() -> Transmitter {
             Transmitter {
@@ -48,6 +49,7 @@ mod transmitter {
             }
         }
 
+        /// Attempts to register a new name connected to your account id.
         #[ink(message)]
         pub fn register_name(&mut self, name: String) -> Result<(),Error> {
 
@@ -65,6 +67,8 @@ mod transmitter {
 
         }
 
+        /// Attempts to send a message to another user using one of your names.
+        /// The name from which you wish the message to be sent must be specified.
         #[ink(message)]
         pub fn send_message(&mut self, from: Name, to: Name, content: Content) -> Result<(),Error> {
 
@@ -96,6 +100,7 @@ mod transmitter {
 
         }
 
+        /// Attempts to make all the messages that were sent to a specific name of yours available.
         #[ink(message)]
         pub fn get_messages(&self, belonging_to: Name) -> Result<Vec<Message>,Error> {
             
@@ -131,6 +136,7 @@ mod transmitter {
 
         }
 
+        /// Attempts to find and delete the specified message. The account name must be specified.
         #[ink(message)]
         pub fn delete_message(&mut self, belonging_to: Name, from: Name, content: Content) -> Result<(),Error> {
 
