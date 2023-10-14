@@ -34,6 +34,8 @@ mod transmitter {
         NameTaken,
         NameNonexistent(Name),
         WrongAccount(Name),
+        NoMessages,
+        MessageNonexistent,
     }
 
     impl Transmitter {
@@ -92,6 +94,56 @@ mod transmitter {
 
             }
 
+        }
+
+        #[ink(message)]
+        pub fn delete_message(&mut self, belonging_to: Name, from: Name, content: Content) -> Result<(),Error> {
+
+            let message_to_del = Message { from, content };
+
+            if let Some(account_id) = self.names.get(&belonging_to) {
+
+                if account_id != self.env().caller() {
+
+                    return Err(Error::WrongAccount(belonging_to));
+
+                }
+
+                if let Some(mut messages) = self.messages.get(&belonging_to) {
+
+                    let mut msg_pos = None;
+
+                    for (pos,message) in messages.iter().enumerate() {
+
+                        if *message == message_to_del {
+                            msg_pos = Some(pos);
+                        } 
+
+                    }
+
+                    if let Some(pos) = msg_pos {
+
+                        messages.remove(pos);
+
+                        return Ok(());
+
+                    } else {
+
+                        return Err(Error::MessageNonexistent);
+
+                    }
+
+                } else {
+                    
+                    return Err(Error::NoMessages);
+
+                }
+
+            } else {
+
+                return Err(Error::NameNonexistent(belonging_to));
+
+            }
         }
 
     }
