@@ -80,6 +80,12 @@ mod transmitter {
 
                 }
 
+                if let None = self.names.get(&to) {
+
+                    return Err(Error::NameNonexistent(to));
+
+                }
+
                 if let Some(mut messages) = self.messages.get(&to) {
 
                     messages.push( Message { from, content });
@@ -88,7 +94,13 @@ mod transmitter {
 
                 } else {
 
-                    return Err(Error::NameNonexistent(to));
+                    let mut messages = Vec::<Message>::new();
+
+                    messages.push( Message { from, content } );
+
+                    self.messages.insert(&to,&messages);
+
+                    return Ok(());
 
                 }
 
@@ -201,26 +213,32 @@ mod transmitter {
 
             let mut transmitter = Transmitter::new();
 
-            if let Err(e) = transmitter.register_name("Alice".to_string()) { panic!("{:?}",e) };
+            if let Err(e) = transmitter.register_name("Alice".to_string()) {
+                panic!("Encountered error {:?} whilst registering Alice's name.",e)
+            };
 
-            if let Err(e) = transmitter.register_name("Bob".to_string()) { panic!("{:?}",e) };
+            if let Err(e) = transmitter.register_name("Bob".to_string()) {
+                panic!("Encountered error {:?} whilst registering Bob's name.",e)
+            };
 
             if let Err(e) = transmitter.send_message(
                 "Alice".to_string(),
                 "Bob".to_string(),
                 "Hello, Bob!".to_string()
             ) {
-                panic!("{:?}",e)
+                panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
 
-            if let Err(e) = transmitter.get_messages("Bob".to_string()) { panic!("{:?}",e) };
+            if let Err(e) = transmitter.get_messages("Bob".to_string()) {
+                panic!("Encountered error {:?} whilst getting Bob's messages.",e)
+            };
             
             if let Err(e) = transmitter.delete_message(
                 "Bob".to_string(),
                 "Alice".to_string(),
                 "Hello, Bob!".to_string()
             ) { 
-                panic!("{:?}",e)
+                panic!("Encountered error {:?} whilst deleting message.",e)
             };
 
         }
