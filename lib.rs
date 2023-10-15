@@ -90,6 +90,8 @@ mod transmitter {
 
                     messages.push( Message { from, content });
 
+                    self.messages.insert(&to, &messages);
+
                     return Ok(());
 
                 } else {
@@ -98,7 +100,7 @@ mod transmitter {
 
                     messages.push( Message { from, content } );
 
-                    self.messages.insert(&to,&messages);
+                    self.messages.insert(&to, &messages);
 
                     return Ok(());
 
@@ -229,8 +231,29 @@ mod transmitter {
                 panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
 
-            if let Err(e) = transmitter.get_messages("Bob".to_string()) {
-                panic!("Encountered error {:?} whilst getting Bob's messages.",e)
+            if let Err(e) = transmitter.send_message(
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Have a nice day!".to_string()
+            ) {
+                panic!("Encountered error {:?} whilst sending message to Bob.",e)
+            };
+
+            match transmitter.get_messages("Bob".to_string()) {
+                Ok(messages) => {
+
+                    if messages.len() != 2 {
+
+                        panic!("Expected to get 2 messages, instead got only {}",messages.len());
+
+                    }
+
+                },
+                Err(e) => {
+
+                    panic!("Encountered error {:?} whilst getting Bob's messages.",e)
+
+                }
             };
             
             if let Err(e) = transmitter.delete_message(
