@@ -7,7 +7,7 @@ mod transmitter {
     use ink::prelude::{string::String, vec::Vec};
 
     pub type Name = String;
-    pub type Content = String;
+    pub type Content = Vec<u8>;
 
     #[derive(PartialEq,scale::Decode, scale::Encode)]
     #[cfg_attr(
@@ -228,7 +228,7 @@ mod transmitter {
             if let Err(e) = transmitter.send_message(
                 "Alice".to_string(),
                 "Bob".to_string(),
-                "Hello, Bob!".to_string()
+                "Hello, Bob!".chars().map(|c| c as u8).collect::<Vec<u8>>()
             ) {
                 panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
@@ -236,7 +236,7 @@ mod transmitter {
             if let Err(e) = transmitter.send_message(
                 "Alice".to_string(),
                 "Bob".to_string(),
-                "Have a nice day!".to_string()
+                "Have a nice day!".chars().map(|c| c as u8).collect::<Vec<u8>>()
             ) {
                 panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
@@ -261,7 +261,7 @@ mod transmitter {
             if let Err(e) = transmitter.delete_message(
                 "Bob".to_string(),
                 "Alice".to_string(),
-                "Hello, Bob!".to_string()
+                "Hello, Bob!".chars().map(|c| c as u8).collect::<Vec<u8>>()
             ) { 
                 panic!("Encountered error {:?} whilst deleting message.",e)
             };
