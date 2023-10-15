@@ -171,7 +171,9 @@ mod transmitter {
                     for (pos,message) in messages.iter().enumerate() {
 
                         if *message == message_to_del {
+
                             msg_pos = Some(pos);
+                            
                         } 
 
                     }
@@ -244,7 +246,7 @@ mod transmitter {
 
                     if messages.len() != 2 {
 
-                        panic!("Expected to get 2 messages, instead got only {}",messages.len());
+                        panic!("Expected to get 2 messages, instead got {}",messages.len());
 
                     }
 
