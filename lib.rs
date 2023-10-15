@@ -50,7 +50,7 @@ mod transmitter {
         }
 
         /// Attempts to register a new name connected to your account id.
-        #[ink(message)]
+        #[ink(message,payable)]
         pub fn register_name(&mut self, name: String) -> Result<(),Error> {
 
             if self.names.contains(&name) {
@@ -69,7 +69,7 @@ mod transmitter {
 
         /// Attempts to send a message to another user using one of your names.
         /// The name from which you wish the message to be sent must be specified.
-        #[ink(message)]
+        #[ink(message,payable)]
         pub fn send_message(&mut self, from: Name, to: Name, content: Content) -> Result<(),Error> {
 
             if let Some(account_id) = self.names.get(&from) {
@@ -115,7 +115,7 @@ mod transmitter {
         }
 
         /// Attempts to make all the messages that were sent to a specific name of yours available.
-        #[ink(message)]
+        #[ink(message,payable)]
         pub fn get_messages(&self, belonging_to: Name) -> Result<Vec<Message>,Error> {
             
             if let Some(account_id) = self.names.get(&belonging_to) {
@@ -173,7 +173,7 @@ mod transmitter {
                         if *message == message_to_del {
 
                             msg_pos = Some(pos);
-                            
+
                         } 
 
                     }
@@ -281,10 +281,90 @@ mod transmitter {
         use super::*;
 
         /// A helper function used for calling contract messages.
-        use ink_e2e::build_message;
+        use ink_e2e::{build_message, subxt::book::setup::client};
 
         /// The End-to-End test `Result` type.
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+        #[ink_e2e::test]
+        async fn it_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+
+            let constructor = TransmitterRef::new();
+
+            let contract_account_id = client
+                .instantiate("transmitter", &ink_e2e::eve(), constructor, 0, None)
+                .await
+                .expect("instantiate failed")
+                .account_id;
+
+            macro_rules! new_name {
+                ($name:literal) => {
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.register_name($name.to_string()))
+                };
+            }
+
+            macro_rules! send_message {
+                ($from:literal -> $to:literal : $content:literal) => {
+                        build_message::<TransmitterRef>(contract_account_id.clone())
+                            .call(|transmitter| transmitter.send_message(
+                                $from.to_string(),
+                                $to.to_string(),
+                                $content.to_string()))
+                };
+            }
+
+            macro_rules! call_dry_run {
+                (alice : $fn_name:tt, pay $amnt:tt) => {
+                    client.call_dry_run(
+                        &ink_e2e::alice(),
+                        &$fn_name,
+                        $amnt,
+                        None)
+                        .await
+                };
+
+                (bob : $fn_name:tt, pay $amnt:tt) => {
+                    client.call_dry_run(
+                        &ink_e2e::bob(),
+                        &$fn_name,
+                        $amnt,
+                        None)
+                        .await
+                };
+
+            }
+
+            let new_name_alice = new_name!("Alice");
+
+            let new_name_alice_result = call_dry_run!(alice: new_name_alice, pay 0);
+
+            if let Err(e) = new_name_alice_result.return_value() { panic!("{:?}",e) };
+
+
+            let new_name_bob = new_name!("Bob");
+
+            let new_name_bob_result = call_dry_run!(bob: new_name_bob, pay 0);
+
+            if let Err(e) = new_name_bob_result.return_value() { panic!("{:?}",e) };
+
+
+            let send_message_alice = send_message!("Alice" -> "Bob" : "Hello, Bob!" );
+
+            let send_message_alice_result = call_dry_run!(alice: send_message_alice, pay 0);
+
+            if let Err(e) = send_message_alice_result.return_value() { panic!("{:?}",e) };
+
+
+            let send_message_bob = send_message!("Bob" -> "Alice": "Hello, Alice! How are you?");
+
+            let send_message_bob_result = call_dry_run!(bob: send_message_bob, pay 0);
+
+            if let Err(e) = send_message_bob_result.return_value() { panic!("{:?}",e) };
+            
+
+            Ok(())
+        }
 
     }
 }
