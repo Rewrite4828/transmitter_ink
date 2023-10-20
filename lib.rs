@@ -22,6 +22,7 @@ mod transmitter {
     #[ink(storage)]
     pub struct Transmitter {
         names: Mapping<Name,AccountId>,
+        users: Mapping<AccountId,Vec<Name>>,
         messages: Mapping<Name,Vec<Message>>,
     }
 
@@ -36,6 +37,7 @@ mod transmitter {
         WrongAccount(Name),
         NoMessages,
         MessageNonexistent,
+        NoNames,
     }
 
     impl Transmitter {
@@ -45,6 +47,7 @@ mod transmitter {
         pub fn new() -> Transmitter {
             Transmitter {
                 names: Mapping::new(),
+                users: Mapping::new(),
                 messages: Mapping::new(),
             }
         }
@@ -61,10 +64,40 @@ mod transmitter {
 
                 self.names.insert(&name,&self.env().caller());
 
+                if let Some(mut user_names) = self.users.get(&self.env().caller()) {
+
+                    user_names.push(name);
+
+                    self.users.insert(&self.env().caller(), &user_names);
+
+                } else {
+
+                    let mut user_names = Vec::<Name>::new();
+
+                    user_names.push(name);
+
+                    self.users.insert(&self.env().caller(), &user_names);
+
+                }
+
                 return Ok(());
 
             }
 
+        }
+
+        #[ink(message)]
+        pub fn get_names(&self) -> Result<Vec<Name>,Error> {
+
+            if let Some(user_names) = self.users.get(&self.env().caller()) {
+
+                return Ok(user_names);
+
+            } else {
+
+                return Err(Error::NoNames);
+
+            }
         }
 
         /// Attempts to send a message to another user using one of your names.
@@ -310,7 +343,7 @@ mod transmitter {
                             .call(|transmitter| transmitter.send_message(
                                 $from.to_string(),
                                 $to.to_string(),
-                                $content.to_string()))
+                                $content.into()))
                 };
             }
 
@@ -335,6 +368,15 @@ mod transmitter {
 
             }
 
+            macro_rules! get_names {
+                () => {
+
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.get_names())
+
+                };
+            }
+
             let new_name_alice = new_name!("Alice");
 
             let new_name_alice_result = call_dry_run!(alice: new_name_alice, pay 0);
@@ -347,6 +389,13 @@ mod transmitter {
             let new_name_bob_result = call_dry_run!(bob: new_name_bob, pay 0);
 
             if let Err(e) = new_name_bob_result.return_value() { panic!("{:?}",e) };
+
+
+            let get_user_names = get_names!();
+
+            let get_user_names_result = call_dry_run!(alice: get_user_names, pay 0);
+
+            if let Err(e) = get_user_names_result.return_value() { panic!("{:?}",e) };
 
 
             let send_message_alice = send_message!("Alice" -> "Bob" : "Hello, Bob!" );
