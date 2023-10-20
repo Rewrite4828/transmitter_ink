@@ -32,7 +32,7 @@ mod transmitter {
     )]
     pub struct Message {
         from: Name,
-        r#type: MessageType,
+        mtype: MessageType,
         content: Content,
     }
 
@@ -120,7 +120,7 @@ mod transmitter {
         /// Attempts to send a message to another user using one of your names.
         /// The name from which you wish the message to be sent must be specified.
         #[ink(message,payable)]
-        pub fn send_message(&mut self, from: Name, to: Name, r#type: MessageType, content: Content) -> Result<(),Error> {
+        pub fn send_message(&mut self, from: Name, to: Name, mtype: MessageType, content: Content) -> Result<(),Error> {
 
             if let Some(account_id) = self.names.get(&from) {
 
@@ -138,7 +138,7 @@ mod transmitter {
 
                 if let Some(mut messages) = self.messages.get(&to) {
 
-                    messages.push( Message { from, r#type, content });
+                    messages.push( Message { from, mtype, content });
 
                     self.messages.insert(&to, &messages);
 
@@ -148,7 +148,7 @@ mod transmitter {
 
                     let mut messages = Vec::<Message>::new();
 
-                    messages.push( Message { from, r#type, content } );
+                    messages.push( Message { from, mtype, content } );
 
                     self.messages.insert(&to, &messages);
 
@@ -202,9 +202,9 @@ mod transmitter {
 
         /// Attempts to find and delete the specified message. The account name must be specified.
         #[ink(message)]
-        pub fn delete_message(&mut self, belonging_to: Name, from: Name, r#type: MessageType, content: Content) -> Result<(),Error> {
+        pub fn delete_message(&mut self, belonging_to: Name, from: Name, mtype: MessageType, content: Content) -> Result<(),Error> {
 
-            let message_to_del = Message { from, r#type, content };
+            let message_to_del = Message { from, mtype, content };
 
             if let Some(account_id) = self.names.get(&belonging_to) {
 
