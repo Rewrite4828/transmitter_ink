@@ -16,6 +16,13 @@ mod transmitter {
     )]
     pub enum MessageType {
         Text,
+        Email { subject: String },
+        EmailAttachment { subject: String, r#type: Box<MessageType> },
+        Request { id: u32 },
+        Response { id: u32, r#type: Box<MessageType> },
+        Json,
+        Stream,
+        Custom(String),
     }
 
     #[derive(PartialEq,scale::Decode, scale::Encode)]
