@@ -7,7 +7,7 @@ mod transmitter {
     use ink::prelude::{string::String, vec::Vec};
     use ink::env::hash::Sha2x256;
 
-    pub type Name = Vec<u8>;
+    pub type Username = Vec<u8>;
     pub type Content = Vec<u8>;
 
     #[derive(PartialEq, scale::Decode, scale::Encode)]
@@ -32,7 +32,7 @@ mod transmitter {
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
     pub struct Message {
-        from: Name,
+        from: Username,
         mtype: MessageType,
         content: Content,
         hash: [u8;32],
@@ -40,9 +40,9 @@ mod transmitter {
 
     #[ink(storage)]
     pub struct Transmitter {
-        names: Mapping<Name,AccountId>,
-        users: Mapping<AccountId,Vec<Name>>,
-        messages: Mapping<Name,Vec<Message>>,
+        usernames: Mapping<Username,AccountId>,
+        users: Mapping<AccountId,Vec<Username>>,
+        messages: Mapping<Username,Vec<Message>>,
     }
 
     #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
@@ -53,8 +53,8 @@ mod transmitter {
     pub enum Error {
         NameTaken,
         InvalidName,
-        NameNonexistent(Name),
-        WrongAccount(Name),
+        NameNonexistent(Username),
+        WrongAccount(Username),
         NoMessages,
         MessageNonexistent,
         NoNames,
@@ -66,7 +66,7 @@ mod transmitter {
         #[ink(constructor)]
         pub fn new() -> Transmitter {
             Transmitter {
-                names: Mapping::new(),
+                usernames: Mapping::new(),
                 users: Mapping::new(),
                 messages: Mapping::new(),
             }
@@ -82,13 +82,13 @@ mod transmitter {
 
             }
 
-            if self.names.contains(&name) {
+            if self.usernames.contains(&name) {
 
                 return Err(Error::NameTaken);
 
             } else {
 
-                self.names.insert(&name,&self.env().caller());
+                self.usernames.insert(&name,&self.env().caller());
 
                 if let Some(mut user_names) = self.users.get(&self.env().caller()) {
 
@@ -98,7 +98,7 @@ mod transmitter {
 
                 } else {
 
-                    let mut user_names = Vec::<Name>::new();
+                    let mut user_names = Vec::<Username>::new();
 
                     user_names.push(name);
 
@@ -114,7 +114,7 @@ mod transmitter {
 
         /// Lists the names registered to your account.
         #[ink(message)]
-        pub fn get_names(&self) -> Result<Vec<Name>,Error> {
+        pub fn get_names(&self) -> Result<Vec<Username>,Error> {
 
             if let Some(user_names) = self.users.get(&self.env().caller()) {
 
@@ -130,9 +130,9 @@ mod transmitter {
         /// Attempts to send a message to another user using one of your names.
         /// The name from which you wish the message to be sent must be specified.
         #[ink(message,payable)]
-        pub fn send_message(&mut self, from: Name, to: Name, mtype: MessageType, content: Content) -> Result<(),Error> {
+        pub fn send_message(&mut self, from: Username, to: Username, mtype: MessageType, content: Content) -> Result<(),Error> {
 
-            if let Some(account_id) = self.names.get(&from) {
+            if let Some(account_id) = self.usernames.get(&from) {
 
                 if account_id != self.env().caller() {
 
@@ -140,7 +140,7 @@ mod transmitter {
 
                 }
 
-                if let None = self.names.get(&to) {
+                if let None = self.usernames.get(&to) {
 
                     return Err(Error::NameNonexistent(to));
 
@@ -180,9 +180,9 @@ mod transmitter {
 
         /// Attempts to make all the messages that were sent to a specific name of yours available.
         #[ink(message,payable)]
-        pub fn get_all_messages(&self, belonging_to: Name) -> Result<Vec<Message>,Error> {
+        pub fn get_all_messages(&self, belonging_to: Username) -> Result<Vec<Message>,Error> {
             
-            if let Some(account_id) = self.names.get(&belonging_to) {
+            if let Some(account_id) = self.usernames.get(&belonging_to) {
 
                 if account_id != self.env().caller() {
 
@@ -264,9 +264,9 @@ mod transmitter {
 
         /// Attempts to find and delete the specified message. The account name and message hash must be specified.
         #[ink(message)]
-        pub fn delete_message(&mut self, belonging_to: Name, hash: [u8;32]) -> Result<(),Error> {
+        pub fn delete_message(&mut self, belonging_to: Username, hash: [u8;32]) -> Result<(),Error> {
 
-            if let Some(account_id) = self.names.get(&belonging_to) {
+            if let Some(account_id) = self.usernames.get(&belonging_to) {
 
                 if account_id != self.env().caller() {
 
