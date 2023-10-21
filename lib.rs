@@ -10,7 +10,7 @@ mod transmitter {
     pub type Name = String;
     pub type Content = Vec<u8>;
 
-    #[derive(PartialEq,scale::Decode, scale::Encode)]
+    #[derive(PartialEq, scale::Decode, scale::Encode)]
     #[cfg_attr(
         feature = "std",
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
@@ -26,7 +26,7 @@ mod transmitter {
         Custom(String),
     }
 
-    #[derive(PartialEq,scale::Decode, scale::Encode)]
+    #[derive(PartialEq, scale::Decode, scale::Encode)]
     #[cfg_attr(
         feature = "std",
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
@@ -207,6 +207,54 @@ mod transmitter {
             }
 
         }
+
+        // #[ink(message)]
+        // pub fn get_message(&self, belonging_to: Name, hash: [u8;32]) -> Result<Message,Error> {
+
+        //     if let Some(account_id) = self.names.get(&belonging_to) {
+
+        //         if account_id != self.env().caller() {
+                    
+        //             return Err(Error::WrongAccount(belonging_to));
+
+        //         }
+
+        //         if let Some(messages) = self.messages.get(&belonging_to) {
+
+        //             let mut msg_pos: Option<usize> = None;
+
+        //             for (pos,message) in messages.iter().enumerate() {
+                        
+        //                 if message.hash == hash {
+
+        //                     msg_pos = Some(pos);
+
+        //                 }
+
+        //             }
+
+        //             if let Some(pos) = msg_pos {
+
+        //                 return Ok(messages[pos]);
+
+        //             } else {
+
+        //                 return Err(Error::MessageNonexistent);
+
+        //             }
+
+        //         } else {
+
+        //             return Err(Error::NoMessages);
+
+        //         }
+
+        //     } else {
+
+        //         return Err(Error::NameNonexistent(belonging_to));
+
+        //     }
+        // }
 
         /// Attempts to find and delete the specified message. The account name must be specified.
         #[ink(message)]
