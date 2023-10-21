@@ -4,7 +4,7 @@
 mod transmitter {
 
     use ink::storage::Mapping;
-    use ink::prelude::{string::String, vec::Vec};
+    use ink::prelude::{string::String, vec::Vec, boxed::Box};
 
     pub type Name = String;
     pub type Content = Vec<u8>;
@@ -17,11 +17,11 @@ mod transmitter {
     pub enum MessageType {
         Text,
         Email { subject: String },
-        EmailAttachment { subject: String, r#type: Box<MessageType> },
-        Request { id: u32 },
-        Response { id: u32, r#type: Box<MessageType> },
+        // EmailAttachment { subject: String, mtype: Box<MessageType>}, //Looks like Box creates some problems - indeed
+        // Request { id: u32 },
+        // Response { id: u32, /*mtype: Box<MessageType>*/},
         Json,
-        Stream,
+        // Stream,
         Custom(String),
     }
 
@@ -34,6 +34,7 @@ mod transmitter {
         from: Name,
         mtype: MessageType,
         content: Content,
+        // TODO: Add MessageId field - better for searching and deleting. use self.env().hash_bytes(input: &[u8], output: &[u8])
     }
 
     #[ink(storage)]
@@ -103,6 +104,7 @@ mod transmitter {
 
         }
 
+        /// Lists the names registered to your account.
         #[ink(message)]
         pub fn get_names(&self) -> Result<Vec<Name>,Error> {
 
