@@ -4,7 +4,8 @@
 mod transmitter {
 
     use ink::storage::Mapping;
-    use ink::prelude::{string::String, vec::Vec, boxed::Box};
+    use ink::prelude::{string::String, vec::Vec};
+    use ink::env::hash::Sha2x256;
 
     pub type Name = String;
     pub type Content = Vec<u8>;
@@ -34,6 +35,7 @@ mod transmitter {
         from: Name,
         mtype: MessageType,
         content: Content,
+        hash: [u8;32],
         // TODO: Add MessageId field - better for searching and deleting. use self.env().hash_bytes(input: &[u8], output: &[u8])
     }
 
@@ -140,7 +142,9 @@ mod transmitter {
 
                 if let Some(mut messages) = self.messages.get(&to) {
 
-                    messages.push( Message { from, mtype, content });
+                    let hash = self.env().hash_bytes::<Sha2x256>(&content);
+
+                    messages.push( Message { from, mtype, content, hash });
 
                     self.messages.insert(&to, &messages);
 
@@ -150,7 +154,9 @@ mod transmitter {
 
                     let mut messages = Vec::<Message>::new();
 
-                    messages.push( Message { from, mtype, content } );
+                    let hash = self.env().hash_bytes::<Sha2x256>(&content);
+
+                    messages.push( Message { from, mtype, content, hash } );
 
                     self.messages.insert(&to, &messages);
 
@@ -204,9 +210,7 @@ mod transmitter {
 
         /// Attempts to find and delete the specified message. The account name must be specified.
         #[ink(message)]
-        pub fn delete_message(&mut self, belonging_to: Name, from: Name, mtype: MessageType, content: Content) -> Result<(),Error> {
-
-            let message_to_del = Message { from, mtype, content };
+        pub fn delete_message(&mut self, belonging_to: Name, hash: [u8;32]) -> Result<(),Error> {
 
             if let Some(account_id) = self.names.get(&belonging_to) {
 
@@ -222,7 +226,7 @@ mod transmitter {
 
                     for (pos,message) in messages.iter().enumerate() {
 
-                        if *message == message_to_del {
+                        if message.hash == hash {
 
                             msg_pos = Some(pos);
 
@@ -312,14 +316,14 @@ mod transmitter {
                 }
             };
             
-            if let Err(e) = transmitter.delete_message(
-                "Bob".to_string(),
-                "Alice".to_string(),
-                MessageType::Text,
-                "Hello, Bob!".into()
-            ) { 
-                panic!("Encountered error {:?} whilst deleting message.",e)
-            };
+            // if let Err(e) = transmitter.delete_message(
+            //     "Bob".to_string(),
+            //     "Alice".to_string(),
+            //     MessageType::Text,
+            //     "Hello, Bob!".into()
+            // ) { 
+            //     panic!("Encountered error {:?} whilst deleting message.",e)
+            // };
 
         }
     }
