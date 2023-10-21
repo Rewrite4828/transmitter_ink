@@ -7,7 +7,7 @@ mod transmitter {
     use ink::prelude::{string::String, vec::Vec};
     use ink::env::hash::Sha2x256;
 
-    pub type Name = String;
+    pub type Name = Vec<u8>;
     pub type Content = Vec<u8>;
 
     #[derive(PartialEq, scale::Decode, scale::Encode)]
@@ -36,7 +36,6 @@ mod transmitter {
         mtype: MessageType,
         content: Content,
         hash: [u8;32],
-        // TODO: Add MessageId field - better for searching and deleting. use self.env().hash_bytes(input: &[u8], output: &[u8])
     }
 
     #[ink(storage)]
@@ -53,6 +52,7 @@ mod transmitter {
     )]
     pub enum Error {
         NameTaken,
+        InvalidName,
         NameNonexistent(Name),
         WrongAccount(Name),
         NoMessages,
@@ -74,7 +74,13 @@ mod transmitter {
 
         /// Attempts to register a new name connected to your account id.
         #[ink(message,payable)]
-        pub fn register_name(&mut self, name: String) -> Result<(),Error> {
+        pub fn register_name(&mut self, name: Vec<u8>) -> Result<(),Error> {
+
+            if name.len() == 0 {
+                
+                return Err(Error::InvalidName);
+
+            }
 
             if self.names.contains(&name) {
 
@@ -256,7 +262,7 @@ mod transmitter {
         //     }
         // }
 
-        /// Attempts to find and delete the specified message. The account name must be specified.
+        /// Attempts to find and delete the specified message. The account name and message hash must be specified.
         #[ink(message)]
         pub fn delete_message(&mut self, belonging_to: Name, hash: [u8;32]) -> Result<(),Error> {
 
@@ -321,11 +327,11 @@ mod transmitter {
 
             let mut transmitter = Transmitter::new();
 
-            if let Err(e) = transmitter.register_name("Alice".to_string()) {
+            if let Err(e) = transmitter.register_name("Alice".into()) {
                 panic!("Encountered error {:?} whilst registering Alice's name.",e)
             };
 
-            if let Err(e) = transmitter.register_name("Bob".to_string()) {
+            if let Err(e) = transmitter.register_name("Bob".into()) {
                 panic!("Encountered error {:?} whilst registering Bob's name.",e)
             };
 
@@ -347,7 +353,7 @@ mod transmitter {
                 panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
 
-            match transmitter.get_all_messages("Bob".to_string()) {
+            match transmitter.get_all_messages("Bob".into()) {
                 Ok(messages) => {
 
                     if messages.len() != 2 {
