@@ -174,7 +174,7 @@ mod transmitter {
 
         /// Attempts to make all the messages that were sent to a specific name of yours available.
         #[ink(message,payable)]
-        pub fn get_messages(&self, belonging_to: Name) -> Result<Vec<Message>,Error> {
+        pub fn get_all_messages(&self, belonging_to: Name) -> Result<Vec<Message>,Error> {
             
             if let Some(account_id) = self.names.get(&belonging_to) {
 
@@ -299,7 +299,7 @@ mod transmitter {
                 panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
 
-            match transmitter.get_messages("Bob".to_string()) {
+            match transmitter.get_all_messages("Bob".to_string()) {
                 Ok(messages) => {
 
                     if messages.len() != 2 {
