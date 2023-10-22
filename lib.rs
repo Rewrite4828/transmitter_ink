@@ -148,7 +148,11 @@ mod transmitter {
 
                 if let Some(mut messages) = self.messages.get(&to) {
 
-                    let hash = self.env().hash_bytes::<Sha2x256>(&content);
+                    let mut to_be_hashed = Vec::<u8>::new();
+                    to_be_hashed.extend(self.env().block_number().to_be_bytes());
+                    to_be_hashed.extend(content.clone().iter());
+
+                    let hash = self.env().hash_bytes::<Sha2x256>(&to_be_hashed);
 
                     messages.push( Message { from, mtype, content, hash });
 
@@ -159,6 +163,10 @@ mod transmitter {
                 } else {
 
                     let mut messages = Vec::<Message>::new();
+
+                    let mut to_be_hashed = Vec::<u8>::new();
+                    to_be_hashed.extend(self.env().block_number().to_be_bytes());
+                    to_be_hashed.extend(content.clone().iter());
 
                     let hash = self.env().hash_bytes::<Sha2x256>(&content);
 
@@ -336,8 +344,8 @@ mod transmitter {
             };
 
             if let Err(e) = transmitter.send_message(
-                "Alice".to_string(),
-                "Bob".to_string(),
+                "Alice".into(),
+                "Bob".into(),
                 MessageType::Text,
                 "Hello, Bob!".into()
             ) {
@@ -345,13 +353,15 @@ mod transmitter {
             };
 
             if let Err(e) = transmitter.send_message(
-                "Alice".to_string(),
-                "Bob".to_string(),
+                "Alice".into(),
+                "Bob".into(),
                 MessageType::Text,
-                "Have a nice day!".chars().map(|c| c as u8).collect::<Vec<u8>>()
+                "Have a nice day!".into()
             ) {
                 panic!("Encountered error {:?} whilst sending message to Bob.",e)
             };
+
+            let mut message_hash = [0u8;32];
 
             match transmitter.get_all_messages("Bob".into()) {
                 Ok(messages) => {
@@ -362,6 +372,9 @@ mod transmitter {
 
                     }
 
+                    message_hash = messages[0].hash;
+
+
                 },
                 Err(e) => {
 
@@ -370,14 +383,12 @@ mod transmitter {
                 }
             };
             
-            // if let Err(e) = transmitter.delete_message(
-            //     "Bob".to_string(),
-            //     "Alice".to_string(),
-            //     MessageType::Text,
-            //     "Hello, Bob!".into()
-            // ) { 
-            //     panic!("Encountered error {:?} whilst deleting message.",e)
-            // };
+            if let Err(e) = transmitter.delete_message(
+                "Bob".into(),
+                message_hash
+            ) { 
+                panic!("Encountered error {:?} whilst deleting message.",e)
+            };
 
         }
     }
