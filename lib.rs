@@ -45,7 +45,8 @@ mod transmitter {
         messages: Mapping<Username,Vec<Message>>,
         balances: Mapping<AccountId,Balance>,
         owner: AccountId,
-        // weights: Mapping<AccountId, u32>,
+        owner_balance: Balance,
+        registration_fee: Balance,
     }
 
     #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
@@ -64,6 +65,15 @@ mod transmitter {
         InsufficientBalance,
         NotContractOwner,
         UpgradeFailed,
+        PaymentFailed {
+            received: Balance,
+            required: Balance,
+            refunded: bool,
+        },
+        WithdrawFailed,
+        NoBalance,
+        NoAccount,
+        CloseAccountFailed,
     }
 
     impl Transmitter {
@@ -77,24 +87,60 @@ mod transmitter {
                 messages: Mapping::new(),
                 balances: Mapping::new(),
                 owner: Self::env().caller(),
+                owner_balance: 0,
+                registration_fee: 1, 
             }
         }
 
         /// Attempts to register a new name connected to your account id.
+        /// The correct registration fee must be paid (use 'get_registration_fee').
+        /// If the payment does not equal the fee, it is refunded.
+        /// If the refund fails for some reason, the balance is stored and
+        /// a refund can be requested with 'withdraw_balance'.
         #[ink(message,payable)]
-        pub fn register_name(&mut self, name: Vec<u8>) -> Result<(),Error> {
+        pub fn register_username(&mut self, name: Vec<u8>) -> Result<(),Error> {
 
             let transferred = self.env().transferred_value();
 
-            if let Some(balance) = self.balances.get(&self.env().caller()) {
+            if transferred != self.registration_fee {
 
-                let balance = balance + transferred;
+                match self.env().transfer(self.env().caller(), transferred) {
+                    Ok(()) => {
 
-                self.balances.insert(&self.env().caller(),&balance);
+                        return Err(Error::PaymentFailed {
+                            received: transferred,
+                            required: self.registration_fee,
+                            refunded: true,
+                        })
+
+                    },
+                    Err(_) => {
+
+                        if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                            let balance = balance + transferred;
+            
+                            self.balances.insert(&self.env().caller(),&balance);
+            
+                        } else {
+            
+                            self.balances.insert(&self.env().caller(),&transferred);
+            
+                        }
+
+                        return Err(Error::PaymentFailed {
+                            received: transferred,
+                            required: self.registration_fee,
+                            refunded: false,
+                        })
+                    }
+                }
 
             } else {
 
-                self.balances.insert(&self.env().caller(),&transferred);
+                if let Err(_) =  self.env().transfer(self.owner, transferred) {
+                    self.owner_balance = transferred;
+                }
 
             }
 
@@ -151,7 +197,7 @@ mod transmitter {
 
         /// Attempts to send a message to another user using one of your names.
         /// The name from which you wish the message to be sent must be specified.
-        #[ink(message,payable)]
+        #[ink(message)]
         pub fn send_message(&mut self, from: Username, to: Username, mtype: MessageType, content: Content) -> Result<(),Error> {
 
             let transferred = self.env().transferred_value();
@@ -332,8 +378,72 @@ mod transmitter {
             }
         }
 
+        /// Attempts to send the balance associated to your account back to you.
         #[ink(message)]
-        pub fn change_contract_ownership(&mut self, new_owner: AccountId) -> Result<(),Error> {
+        pub fn withdraw_balance(&mut self) -> Result<(),Error> {
+            if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                if balance == 0 {
+                    return Err(Error::NoBalance);
+                }
+
+                if let Err(_) = self.env().transfer(self.env().caller(), balance) {
+
+                    return Err(Error::WithdrawFailed);
+
+                } else {
+
+                    self.balances.insert(&self.env().caller(), &0);
+
+                    return Ok(());
+
+                }
+
+            } else {
+
+                return Err(Error::NoBalance);
+
+            }
+        }
+
+        #[ink(message)]
+        pub fn close_account(&mut self) -> Result<(),Error> {
+            if let Some(usernames) = self.users.get(&self.env().caller()) {
+
+                if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                    if let Err(_) = self.env().transfer(self.env().caller(), balance) {
+
+                        return Err(Error::CloseAccountFailed);
+
+                    }
+
+                    self.balances.remove(&self.env().caller());
+
+                }
+
+                for username in usernames.iter() {
+
+                    self.messages.remove(username);
+
+                    self.usernames.remove(username);
+
+                }
+
+                self.users.remove(&self.env().caller());
+
+                return Ok(());
+
+            } else {
+
+                return Err(Error::NoAccount);
+
+            }
+        }
+
+        /// Transfers the contract ownership. Can only be called by the current owner.
+        #[ink(message)]
+        pub fn transfer_contract_ownership(&mut self, new_owner: AccountId) -> Result<(),Error> {
 
             if self.env().caller() == self.owner {
 
@@ -349,6 +459,7 @@ mod transmitter {
 
         }
 
+        /// Updated the contract code. Can only be called by the contract owner.
         #[ink(message)]
         pub fn set_code(&mut self, code_hash: ink::primitives::Hash) -> Result<(),Error> {
             if self.env().caller() == self.owner {
@@ -373,6 +484,50 @@ mod transmitter {
 
             }
         }
+
+        /// Sets a new value for the username registration fee. Can only be called by the contract owner.
+        #[ink(message)]
+        pub fn set_fee(&mut self, new_fee: Balance) -> Result<(),Error> {
+
+            if self.env().caller() == self.owner {
+
+                self.registration_fee = new_fee;
+
+                return Ok(());
+
+            } else {
+
+                return Err(Error::NotContractOwner);
+
+            }
+
+        }
+
+        #[ink(message)]
+        pub fn owner_withdraw_balance(&mut self) -> Result<(),Error> {
+
+            if self.owner_balance > 0 {
+
+                if let Err(_) = self.env().transfer(self.owner, self.owner_balance) {
+
+                    return Err(Error::WithdrawFailed);
+
+                } else {
+
+                    self.owner_balance = 0;
+
+                    return Ok(());
+
+                }
+
+            } else {
+
+                return Err(Error::NoBalance);
+
+            }
+
+        }
+
     }
 
 
@@ -387,11 +542,11 @@ mod transmitter {
 
             let mut transmitter = Transmitter::new();
 
-            if let Err(e) = transmitter.register_name("Alice".into()) {
+            if let Err(e) = transmitter.register_username("Alice".into()) {
                 panic!("Encountered error {:?} whilst registering Alice's name.",e)
             };
 
-            if let Err(e) = transmitter.register_name("Bob".into()) {
+            if let Err(e) = transmitter.register_username("Bob".into()) {
                 panic!("Encountered error {:?} whilst registering Bob's name.",e)
             };
 
