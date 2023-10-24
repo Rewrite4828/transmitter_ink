@@ -44,6 +44,7 @@ mod transmitter {
         users: Mapping<AccountId,Vec<Username>>,
         messages: Mapping<Username,Vec<Message>>,
         balances: Mapping<AccountId,Balance>,
+        owner: AccountId,
         // weights: Mapping<AccountId, u32>,
     }
 
@@ -61,6 +62,8 @@ mod transmitter {
         MessageNonexistent,
         NoNames,
         InsufficientBalance,
+        NotContractOwner,
+        UpgradeFailed,
     }
 
     impl Transmitter {
@@ -73,6 +76,7 @@ mod transmitter {
                 users: Mapping::new(),
                 messages: Mapping::new(),
                 balances: Mapping::new(),
+                owner: Self::env().caller(),
             }
         }
 
@@ -324,6 +328,48 @@ mod transmitter {
             } else {
 
                 return Err(Error::NameNonexistent(username));
+
+            }
+        }
+
+        #[ink(message)]
+        pub fn change_contract_ownership(&mut self, new_owner: AccountId) -> Result<(),Error> {
+
+            if self.env().caller() == self.owner {
+
+                self.owner = new_owner;
+
+                return Ok(());
+
+            } else {
+
+                return Err(Error::NotContractOwner);
+
+            }
+
+        }
+
+        #[ink(message)]
+        pub fn set_code(&mut self, code_hash: ink::primitives::Hash) -> Result<(),Error> {
+            if self.env().caller() == self.owner {
+
+                match self.env().set_code_hash(&code_hash) {
+                    Ok(()) => {
+
+                        return Ok(());
+
+                    },
+                    Err(_) => {
+
+                        return Err(Error::UpgradeFailed)
+
+                    }
+                }
+
+
+            } else {
+
+                return Err(Error::NotContractOwner);
 
             }
         }
