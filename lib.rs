@@ -43,6 +43,8 @@ mod transmitter {
         usernames: Mapping<Username,AccountId>,
         users: Mapping<AccountId,Vec<Username>>,
         messages: Mapping<Username,Vec<Message>>,
+        balances: Mapping<AccountId,Balance>,
+        // weights: Mapping<AccountId, u32>,
     }
 
     #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
@@ -58,6 +60,7 @@ mod transmitter {
         NoMessages,
         MessageNonexistent,
         NoNames,
+        InsufficientBalance,
     }
 
     impl Transmitter {
@@ -69,12 +72,27 @@ mod transmitter {
                 usernames: Mapping::new(),
                 users: Mapping::new(),
                 messages: Mapping::new(),
+                balances: Mapping::new(),
             }
         }
 
         /// Attempts to register a new name connected to your account id.
         #[ink(message,payable)]
         pub fn register_name(&mut self, name: Vec<u8>) -> Result<(),Error> {
+
+            let transferred = self.env().transferred_value();
+
+            if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                let balance = balance + transferred;
+
+                self.balances.insert(&self.env().caller(),&balance);
+
+            } else {
+
+                self.balances.insert(&self.env().caller(),&transferred);
+
+            }
 
             if name.len() == 0 {
                 
@@ -131,6 +149,20 @@ mod transmitter {
         /// The name from which you wish the message to be sent must be specified.
         #[ink(message,payable)]
         pub fn send_message(&mut self, from: Username, to: Username, mtype: MessageType, content: Content) -> Result<(),Error> {
+
+            let transferred = self.env().transferred_value();
+
+            if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                let balance = balance + transferred;
+
+                self.balances.insert(&self.env().caller(),&balance);
+
+            } else {
+
+                self.balances.insert(&self.env().caller(),&transferred);
+
+            }
 
             if let Some(account_id) = self.usernames.get(&from) {
 
@@ -222,54 +254,6 @@ mod transmitter {
 
         }
 
-        // #[ink(message)]
-        // pub fn get_message(&self, belonging_to: Name, hash: [u8;32]) -> Result<Message,Error> {
-
-        //     if let Some(account_id) = self.names.get(&belonging_to) {
-
-        //         if account_id != self.env().caller() {
-                    
-        //             return Err(Error::WrongAccount(belonging_to));
-
-        //         }
-
-        //         if let Some(messages) = self.messages.get(&belonging_to) {
-
-        //             let mut msg_pos: Option<usize> = None;
-
-        //             for (pos,message) in messages.iter().enumerate() {
-                        
-        //                 if message.hash == hash {
-
-        //                     msg_pos = Some(pos);
-
-        //                 }
-
-        //             }
-
-        //             if let Some(pos) = msg_pos {
-
-        //                 return Ok(messages[pos]);
-
-        //             } else {
-
-        //                 return Err(Error::MessageNonexistent);
-
-        //             }
-
-        //         } else {
-
-        //             return Err(Error::NoMessages);
-
-        //         }
-
-        //     } else {
-
-        //         return Err(Error::NameNonexistent(belonging_to));
-
-        //     }
-        // }
-
         /// Attempts to find and delete the specified message. The account name and message hash must be specified.
         #[ink(message)]
         pub fn delete_message(&mut self, belonging_to: Username, hash: [u8;32]) -> Result<(),Error> {
@@ -321,6 +305,28 @@ mod transmitter {
             }
         }
 
+        /// Removes all messages that are in sotrage. This operation is not undoable, so proceed with caution.
+        #[ink(message)]
+        pub fn delete_all_messages(&mut self, username: Username) -> Result<(),Error> {
+
+            if let Some(account_id) = self.usernames.get(&username) {
+
+                if account_id != self.env().caller() {
+
+                    return Err(Error::WrongAccount(username));
+
+                }
+
+                self.messages.insert(&username, &Vec::<Message>::new());
+
+                return Ok(());
+
+            } else {
+
+                return Err(Error::NameNonexistent(username));
+
+            }
+        }
     }
 
 
