@@ -18,6 +18,7 @@ mod transmitter {
     pub enum MessageType {
         Text,
         Email { subject: String },
+        ReplyTo { hash: [u8;32] },
         // EmailAttachment { subject: String, mtype: Box<MessageType>}, //Looks like Box creates some problems - indeed
         // Request { id: u32 },
         // Response { id: u32, /*mtype: Box<MessageType>*/},
@@ -191,6 +192,27 @@ mod transmitter {
             } else {
 
                 return Err(Error::NoNames);
+
+            }
+        }
+
+        /// Attempts to state the balance associated to your account.
+        #[ink(message)]
+        pub fn get_balance(&self) -> Result<Balance,Error> {
+
+            if let None = self.users.get(&self.env().caller()) {
+
+                return Err(Error::NoAccount);
+
+            }
+        
+            if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                return Ok(balance);
+
+            } else {
+
+                return Ok(0);
 
             }
         }
@@ -406,6 +428,7 @@ mod transmitter {
             }
         }
 
+        /// Attempts to close your account. Any remaining balance will be sent back to you.
         #[ink(message)]
         pub fn close_account(&mut self) -> Result<(),Error> {
             if let Some(usernames) = self.users.get(&self.env().caller()) {
@@ -443,7 +466,7 @@ mod transmitter {
 
         /// Transfers the contract ownership. Can only be called by the current owner.
         #[ink(message)]
-        pub fn transfer_contract_ownership(&mut self, new_owner: AccountId) -> Result<(),Error> {
+        pub fn co_transfer_contract_ownership(&mut self, new_owner: AccountId) -> Result<(),Error> {
 
             if self.env().caller() == self.owner {
 
@@ -461,7 +484,7 @@ mod transmitter {
 
         /// Updated the contract code. Can only be called by the contract owner.
         #[ink(message)]
-        pub fn set_code(&mut self, code_hash: ink::primitives::Hash) -> Result<(),Error> {
+        pub fn co_set_code(&mut self, code_hash: ink::primitives::Hash) -> Result<(),Error> {
             if self.env().caller() == self.owner {
 
                 match self.env().set_code_hash(&code_hash) {
@@ -487,7 +510,7 @@ mod transmitter {
 
         /// Sets a new value for the username registration fee. Can only be called by the contract owner.
         #[ink(message)]
-        pub fn set_fee(&mut self, new_fee: Balance) -> Result<(),Error> {
+        pub fn co_set_fee(&mut self, new_fee: Balance) -> Result<(),Error> {
 
             if self.env().caller() == self.owner {
 
@@ -503,8 +526,9 @@ mod transmitter {
 
         }
 
+        /// Withdraw the balance stored. Can only be called by the contract owner.
         #[ink(message)]
-        pub fn owner_withdraw_balance(&mut self) -> Result<(),Error> {
+        pub fn co_owner_withdraw_balance(&mut self) -> Result<(),Error> {
 
             if self.owner_balance > 0 {
 
