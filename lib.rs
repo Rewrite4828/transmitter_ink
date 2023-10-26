@@ -3,7 +3,7 @@
 #[ink::contract]
 mod transmitter {
 
-    use ink::storage::Mapping;
+    use ink::storage::{Mapping, Lazy};
     use ink::prelude::{string::String, vec::Vec};
     use ink::env::hash::Sha2x256;
 
@@ -39,12 +39,24 @@ mod transmitter {
         hash: [u8;32],
     }
 
+    #[derive(PartialEq, scale::Decode, scale::Encode)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub struct Sale {
+        username: Username,
+        to: AccountId,
+        price: Balance,
+    }
+
     #[ink(storage)]
     pub struct Transmitter {
         usernames: Mapping<Username,AccountId>,
         users: Mapping<AccountId,Vec<Username>>,
         messages: Mapping<Username,Vec<Message>>,
         balances: Mapping<AccountId,Balance>,
+        sale_offers: Lazy<Vec<Sale>>,
         owner: AccountId,
         owner_balance: Balance,
         registration_fee: Balance,
@@ -75,6 +87,7 @@ mod transmitter {
         NoBalance,
         NoAccount,
         CloseAccountFailed,
+        UsernameAlreadyInSale,
     }
 
     impl Transmitter {
@@ -87,12 +100,14 @@ mod transmitter {
                 users: Mapping::new(),
                 messages: Mapping::new(),
                 balances: Mapping::new(),
+                sale_offers: Lazy::new(),
                 owner: Self::env().caller(),
                 owner_balance: 0,
                 registration_fee: 1, 
             }
         }
 
+        /// Tells you the fee for registering a username.
         #[ink(message)]
         pub fn check_fee(&self) -> Balance {
             self.registration_fee
@@ -417,7 +432,9 @@ mod transmitter {
             if let Some(balance) = self.balances.get(&self.env().caller()) {
 
                 if balance == 0 {
+
                     return Err(Error::NoBalance);
+
                 }
 
                 if let Err(_) = self.env().transfer(self.env().caller(), balance) {
@@ -437,6 +454,79 @@ mod transmitter {
                 return Err(Error::NoBalance);
 
             }
+        }
+
+        /// Makes a sale offer to the specified user. A 5% fee is charged.
+        #[ink(message)]
+        pub fn sell_username_to(&mut self, username: Username, to: AccountId, price: Balance) -> Result<(),Error> {
+
+            if let Some(account_id) = self.usernames.get(&username) {
+
+                if account_id != self.env().caller() {
+
+                    return Err(Error::WrongAccount(username));
+
+                }
+
+                if let Some(mut sale_offers) = self.sale_offers.get() {
+
+                    for sale in sale_offers.iter() {
+
+                        if sale.username == username {
+    
+                            return Err(Error::UsernameAlreadyInSale);
+    
+                        }
+    
+                    }
+
+                    sale_offers.push(Sale { username, to, price });
+
+                    self.sale_offers.set(&sale_offers);
+
+                    return Ok(());
+
+                } else {
+
+                    let sale_offers = vec![Sale { username, to, price }];
+
+                    self.sale_offers.set(&sale_offers);
+
+                    return Ok(());
+
+                }
+
+
+            } else {
+
+                return Err(Error::NameNonexistent(username));
+
+            }
+
+        }
+
+        /// Cancels the sale offer of the specified username.
+        #[ink(message)]
+        pub fn cancel_sale(&mut self, username: Username) -> Result<(),Error> {
+            todo!()
+        }
+
+        /// Gets any sale propositions made to you.
+        #[ink(message)]
+        pub fn get_sale_propositions(&mut self) -> Result<(), Error> {
+            todo!()
+        }
+
+        /// Executes a proposed sale.
+        #[ink(message,payable)]
+        pub fn buy_username(&mut self, username: Username) -> Result<(),Error> {
+            todo!()
+        }
+
+        /// A sale proposition made to you is cancelled.
+        #[ink(message)]
+        pub fn refuse_to_buy(&mut self, username: Username) -> Result<(),Error> {
+            todo!()
         }
 
         /// Attempts to close your account. Any remaining balance will be sent back to you.
