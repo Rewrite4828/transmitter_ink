@@ -88,6 +88,7 @@ mod transmitter {
         NoAccount,
         CloseAccountFailed,
         UsernameAlreadyInSale,
+        UsernameNotInSale,
     }
 
     impl Transmitter {
@@ -508,7 +509,57 @@ mod transmitter {
         /// Cancels the sale offer of the specified username.
         #[ink(message)]
         pub fn cancel_sale(&mut self, username: Username) -> Result<(),Error> {
-            todo!()
+
+            if let Some(account_id) = self.usernames.get(&username) {
+
+                if account_id != self.env().caller() {
+
+                    return Err(Error::WrongAccount(username));
+
+                }
+
+                if let Some(mut sale_offers) = self.sale_offers.get() {
+
+                    let mut sale_pos: Option<usize> = None;
+
+                    for (pos, sale) in sale_offers.iter().enumerate() {
+
+                        if sale.username == username {
+
+                            sale_pos = Some(pos);
+
+                            break;
+
+                        }
+
+                    }
+
+                    if let Some(pos) = sale_pos {
+
+                        sale_offers.remove(pos);
+
+                        self.sale_offers.set(&sale_offers);
+
+                        return Ok(());
+
+                    } else {
+
+                        return Err(Error::UsernameNotInSale);
+
+                    }
+
+                } else {
+
+                    return Err(Error::UsernameNotInSale);
+
+                }
+
+            } else {
+
+                return Err(Error::NameNonexistent(username));
+
+            }
+            
         }
 
         /// Gets any sale propositions made to you.
