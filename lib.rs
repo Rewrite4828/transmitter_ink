@@ -89,6 +89,7 @@ mod transmitter {
         CloseAccountFailed,
         UsernameAlreadyInSale,
         UsernameNotInSale,
+        NoSalesForYou,
     }
 
     impl Transmitter {
@@ -559,13 +560,45 @@ mod transmitter {
                 return Err(Error::NameNonexistent(username));
 
             }
-            
+
         }
 
         /// Gets any sale propositions made to you.
         #[ink(message)]
-        pub fn get_sale_propositions(&mut self) -> Result<(), Error> {
-            todo!()
+        pub fn get_sale_propositions(&mut self) -> Result<Vec<Sale>, Error> {
+            
+            let sale_offers = self.sale_offers.get();
+
+            if let Some(sale_offers) = sale_offers {
+
+                let mut sales_to_user = Vec::<Sale>::new();
+
+                for sale in sale_offers.iter() {
+
+                    if sale.to == self.env().caller() {
+
+                        sales_to_user.push(Sale { username: sale.username.clone(), to: sale.to, price: sale.price } );
+
+                    }
+
+                }
+
+                if sales_to_user.len() == 0 {
+
+                    return Err(Error::NoSalesForYou);
+
+                } else {
+
+                    return Ok(sales_to_user);
+
+                }
+
+            } else {
+
+                return Err(Error::NoSalesForYou);
+
+            }
+
         }
 
         /// Executes a proposed sale.
