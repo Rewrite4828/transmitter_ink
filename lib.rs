@@ -69,7 +69,7 @@ mod transmitter {
         PaymentFailed {
             received: Balance,
             required: Balance,
-            refunded: bool,
+            missing: Balance,
         },
         WithdrawFailed,
         NoBalance,
@@ -93,54 +93,65 @@ mod transmitter {
             }
         }
 
+        #[ink(message)]
+        pub fn check_fee(&self) -> Balance {
+            self.registration_fee
+        }
+
         /// Attempts to register a new name connected to your account id.
         /// The correct registration fee must be paid (use 'get_registration_fee').
-        /// If the payment does not equal the fee, it is refunded.
-        /// If the refund fails for some reason, the balance is stored and
-        /// a refund can be requested with 'withdraw_balance'.
+        /// If the payment does not equal the fee, the remainder is stored in your account's balance.
         #[ink(message,payable)]
         pub fn register_username(&mut self, name: Vec<u8>) -> Result<(),Error> {
 
             let transferred = self.env().transferred_value();
 
-            if transferred != self.registration_fee {
+            if transferred < self.registration_fee {
 
-                match self.env().transfer(self.env().caller(), transferred) {
-                    Ok(()) => {
+                if let Some(balance) = self.balances.get(&self.env().caller()) {
 
-                        return Err(Error::PaymentFailed {
-                            received: transferred,
-                            required: self.registration_fee,
-                            refunded: true,
-                        })
+                    self.balances.insert(&self.env().caller(), &(balance + transferred));
 
-                    },
-                    Err(_) => {
+                } else {
 
-                        if let Some(balance) = self.balances.get(&self.env().caller()) {
+                    self.balances.insert(&self.env().caller(), &transferred);
 
-                            let balance = balance + transferred;
-            
-                            self.balances.insert(&self.env().caller(),&balance);
-            
-                        } else {
-            
-                            self.balances.insert(&self.env().caller(),&transferred);
-            
-                        }
-
-                        return Err(Error::PaymentFailed {
-                            received: transferred,
-                            required: self.registration_fee,
-                            refunded: false,
-                        })
-                    }
                 }
+
+                return Err(Error::PaymentFailed {
+                    received: transferred,
+                    required: self.registration_fee,
+                    missing: transferred - self.registration_fee }
+                );
 
             } else {
 
-                if let Err(_) =  self.env().transfer(self.owner, transferred) {
-                    self.owner_balance = transferred;
+                if transferred == self.registration_fee {
+
+                    if let Err(_) =  self.env().transfer(self.owner, transferred) {
+
+                        self.owner_balance = transferred;
+
+                    }
+
+                } else {
+
+                    if let Err(_) =  self.env().transfer(self.owner, self.registration_fee) {
+
+                        self.owner_balance = self.registration_fee;
+
+                    }
+
+                    if let Some(balance) = self.balances.get(&self.env().caller()) {
+
+                        self.balances.insert(&self.env().caller(), &(balance + (transferred - self.registration_fee)));
+
+                    } else {
+
+                        self.balances.insert(&self.env().caller(), &(transferred - self.registration_fee));
+
+                    }
+
                 }
 
             }
