@@ -60,6 +60,7 @@ mod transmitter {
         owner: AccountId,
         owner_balance: Balance,
         registration_fee: Balance,
+        fee_payment_dates: Mapping<Username,Timestamp>,
     }
 
     #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
@@ -105,7 +106,8 @@ mod transmitter {
                 sale_offers: Lazy::new(),
                 owner: Self::env().caller(),
                 owner_balance: 0,
-                registration_fee: 1, 
+                registration_fee: 1,
+                fee_payment_dates: Mapping::new(),
             }
         }
 
@@ -122,6 +124,7 @@ mod transmitter {
         pub fn register_username(&mut self, name: Vec<u8>) -> Result<(),Error> {
 
             let transferred = self.env().transferred_value();
+            let timestamp = self.env().block_timestamp();
 
             if transferred < self.registration_fee {
 
@@ -138,36 +141,24 @@ mod transmitter {
                 return Err(Error::PaymentFailed {
                     received: transferred,
                     required: self.registration_fee,
-                    missing: transferred - self.registration_fee }
+                    missing: self.registration_fee - transferred }
                 );
+
+            } else if transferred == self.registration_fee {
+
+                self.owner_balance += transferred;
 
             } else {
 
-                if transferred == self.registration_fee {
+                self.owner_balance += self.registration_fee;
 
-                    if let Err(_) =  self.env().transfer(self.owner, transferred) {
+                if let Some(balance) = self.balances.get(&self.env().caller()) {
 
-                        self.owner_balance = transferred;
-
-                    }
+                    self.balances.insert(&self.env().caller(), &(balance + (transferred - self.registration_fee)));
 
                 } else {
 
-                    if let Err(_) =  self.env().transfer(self.owner, self.registration_fee) {
-
-                        self.owner_balance = self.registration_fee;
-
-                    }
-
-                    if let Some(balance) = self.balances.get(&self.env().caller()) {
-
-                        self.balances.insert(&self.env().caller(), &(balance + (transferred - self.registration_fee)));
-
-                    } else {
-
-                        self.balances.insert(&self.env().caller(), &(transferred - self.registration_fee));
-
-                    }
+                    self.balances.insert(&self.env().caller(), &(transferred - self.registration_fee));
 
                 }
 
@@ -189,6 +180,8 @@ mod transmitter {
 
                 if let Some(mut user_names) = self.users.get(&self.env().caller()) {
 
+                    self.fee_payment_dates.insert(&name, &timestamp);
+
                     user_names.push(name);
 
                     self.users.insert(&self.env().caller(), &user_names);
@@ -196,6 +189,8 @@ mod transmitter {
                 } else {
 
                     let mut user_names = Vec::<Username>::new();
+
+                    self.fee_payment_dates.insert(&name, &timestamp);
 
                     user_names.push(name);
 
@@ -211,7 +206,7 @@ mod transmitter {
 
         /// Lists the names registered to your account.
         #[ink(message)]
-        pub fn get_names(&self) -> Result<Vec<Username>,Error> {
+        pub fn get_usernames(&self) -> Result<Vec<Username>,Error> {
 
             if let Some(user_names) = self.users.get(&self.env().caller()) {
 
@@ -490,7 +485,9 @@ mod transmitter {
 
                 } else {
 
-                    let sale_offers = vec![Sale { username, to, price }];
+                    let mut sale_offers = Vec::<Sale>::new();
+
+                    sale_offers.push(Sale { username, to, price });
 
                     self.sale_offers.set(&sale_offers);
 
@@ -751,12 +748,18 @@ mod transmitter {
 
             let mut transmitter = Transmitter::new();
 
+            if let Err(e) = transmitter.co_set_fee(0) {
+
+                panic!("Error {:?} while setting registration fee.",e);
+
+            };
+
             if let Err(e) = transmitter.register_username("Alice".into()) {
-                panic!("Encountered error {:?} whilst registering Alice's name.",e)
+                panic!("Encountered error {:?} while registering Alice's name.",e)
             };
 
             if let Err(e) = transmitter.register_username("Bob".into()) {
-                panic!("Encountered error {:?} whilst registering Bob's name.",e)
+                panic!("Encountered error {:?} while registering Bob's name.",e)
             };
 
             if let Err(e) = transmitter.send_message(
@@ -765,7 +768,7 @@ mod transmitter {
                 MessageType::Text,
                 "Hello, Bob!".into()
             ) {
-                panic!("Encountered error {:?} whilst sending message to Bob.",e)
+                panic!("Encountered error {:?} while sending message to Bob.",e)
             };
 
             if let Err(e) = transmitter.send_message(
@@ -774,7 +777,7 @@ mod transmitter {
                 MessageType::Text,
                 "Have a nice day!".into()
             ) {
-                panic!("Encountered error {:?} whilst sending message to Bob.",e)
+                panic!("Encountered error {:?} while sending message to Bob.",e)
             };
 
             let mut message_hash = [0u8;32];
@@ -794,7 +797,7 @@ mod transmitter {
                 },
                 Err(e) => {
 
-                    panic!("Encountered error {:?} whilst getting Bob's messages.",e)
+                    panic!("Encountered error {:?} while getting Bob's messages.",e)
 
                 }
             };
@@ -807,6 +810,7 @@ mod transmitter {
             };
 
         }
+
     }
 
 
@@ -840,7 +844,7 @@ mod transmitter {
             macro_rules! new_name {
                 ($name:literal) => {
                     build_message::<TransmitterRef>(contract_account_id.clone())
-                        .call(|transmitter| transmitter.register_name($name.to_string()))
+                        .call(|transmitter| transmitter.register_username($name.into()))
                 };
             }
 
@@ -848,26 +852,77 @@ mod transmitter {
                 ($from:literal -> $to:literal : $content:literal) => {
                         build_message::<TransmitterRef>(contract_account_id.clone())
                             .call(|transmitter| transmitter.send_message(
-                                $from.to_string(),
-                                $to.to_string(),
-                                $content.into()))
+                                $from.into(),
+                                $to.into(),
+                                MessageType::Text,
+                                $content.into())
+                            )
                 };
             }
 
-            macro_rules! call_dry_run {
+            // macro_rules! call_dry_run {
+
+            //     (alice : $fn_name:tt, pay $amnt:tt) => {
+            //         client.call_dry_run(
+            //             &ink_e2e::alice(),
+            //             &$fn_name,
+            //             $amnt,
+            //             None)
+            //             .await
+            //     };
+
+            //     (bob : $fn_name:tt, pay $amnt:tt) => {
+            //         client.call_dry_run(
+            //             &ink_e2e::bob(),
+            //             &$fn_name,
+            //             $amnt,
+            //             None)
+            //             .await
+            //     };
+
+            // }
+
+            macro_rules! get_names {
+                () => {
+
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.get_usernames())
+
+                };
+            }
+
+            macro_rules! get_all_messages {
+                () => {
+
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.get_all_messages())
+
+                }
+            }
+
+            macro_rules! delete_all_messages {
+                () => {
+
+                    build_message::<TransmitterRed>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.delete_all_messages())
+
+                }
+            }
+
+            macro_rules! call_run {
                 (alice : $fn_name:tt, pay $amnt:tt) => {
-                    client.call_dry_run(
+                    client.call(
                         &ink_e2e::alice(),
-                        &$fn_name,
+                        $fn_name,
                         $amnt,
                         None)
                         .await
                 };
 
                 (bob : $fn_name:tt, pay $amnt:tt) => {
-                    client.call_dry_run(
+                    client.call(
                         &ink_e2e::bob(),
-                        &$fn_name,
+                        $fn_name,
                         $amnt,
                         None)
                         .await
@@ -875,48 +930,101 @@ mod transmitter {
 
             }
 
-            macro_rules! get_names {
-                () => {
-
-                    build_message::<TransmitterRef>(contract_account_id.clone())
-                        .call(|transmitter| transmitter.get_names())
-
-                };
-            }
+            // ----------------------------------------------------------------------
 
             let new_name_alice = new_name!("Alice");
 
-            let new_name_alice_result = call_dry_run!(alice: new_name_alice, pay 0);
+            let new_name_alice_result = call_run!(alice: new_name_alice, pay 1);
 
-            if let Err(e) = new_name_alice_result.return_value() { panic!("{:?}",e) };
+            if let Err(e) = new_name_alice_result.expect("Error w/ 'new_name_alice'.").return_value() { panic!("{:?}",e) };
 
 
             let new_name_bob = new_name!("Bob");
 
-            let new_name_bob_result = call_dry_run!(bob: new_name_bob, pay 0);
+            let new_name_bob_result = call_run!(bob: new_name_bob, pay 2);
 
-            if let Err(e) = new_name_bob_result.return_value() { panic!("{:?}",e) };
+            if let Err(e) = new_name_bob_result.expect("Error w/ 'new_name_bob'.").return_value() { panic!("{:?}",e) };
 
 
             let get_user_names = get_names!();
 
-            let get_user_names_result = call_dry_run!(alice: get_user_names, pay 0);
+            let get_user_names_result = call_run!(alice: get_user_names, pay 0);
 
-            if let Err(e) = get_user_names_result.return_value() { panic!("{:?}",e) };
+            if let Err(e) = get_user_names_result.expect("Error w/ 'get_user_names'.").return_value() { panic!("{:?}",e) };
 
 
             let send_message_alice = send_message!("Alice" -> "Bob" : "Hello, Bob!" );
 
-            let send_message_alice_result = call_dry_run!(alice: send_message_alice, pay 0);
+            let send_message_alice_result = call_run!(alice: send_message_alice, pay 0);
 
-            if let Err(e) = send_message_alice_result.return_value() { panic!("{:?}",e) };
+            if let Err(e) = send_message_alice_result.expect("Error w/ 'send_message_alice'").return_value() { panic!("{:?}",e) };
 
 
-            let send_message_bob = send_message!("Bob" -> "Alice": "Hello, Alice! How are you?");
+            let get_all_messages = get_all_messages!();
 
-            let send_message_bob_result = call_dry_run!(bob: send_message_bob, pay 0);
+            let get_all_messages_result = call_run!(bob: get_all_messages, pay 0);
 
-            if let Err(e) = send_message_bob_result.return_value() { panic!("{:?}",e) };
+            match get_all_messages_result.expect("Error w/ 'get_all_messages (bob)'").return_value() {
+                Ok(messages) => {
+
+                    if messages.len() != 1 {
+
+                        panic!("Error: incorrect number of messages received by bob.");
+
+                    }
+
+                    if messages[0].content != "Hello, Bob!".into() {
+
+                        panic!("Error: incorrect message received by bob.");
+
+                    }
+
+                },
+                Err(e) => {
+
+                    panic!(" Error {:?} while getting Bob's messages",e);
+
+                }
+            }
+
+
+            let send_message = send_message!("Bob" -> "Alice": "Hello, Alice! How are you?");
+
+            let send_message_result = call_run!(bob: send_message, pay 0);
+
+            if let Err(e) = send_message_result.expect("Error w/ 'send_message_bob.").return_value() { panic!("{:?}",e) };
+
+
+            let get_all_messages = get_all_messages!();
+
+            let get_all_messages_result = call_run!(alice: get_all_messages, pay 0);
+
+            match get_all_messages_result.expect("Error w/ 'get_all_messages (alice)'").return_value() {
+                Ok(messages) => {
+
+                    if messages.len() != 1 {
+
+                        panic!("Error: incorrect number of messages received by alice.");
+
+                    }
+
+                    if messages[0].content != "Hello, Bob!".into() {
+
+                        panic!("Error: incorrect message received by alice.");
+
+                    }
+
+                },
+                Err(e) => {
+
+                    panic!(" Error {:?} while getting Alice's messages",e);
+
+                }
+            }
+
+            let delete_all_messages = delete_all_messages!();
+
+            let delete_all_messages_result = call_run!(alice: delete_all_messages, pay 0);
             
 
             Ok(())
