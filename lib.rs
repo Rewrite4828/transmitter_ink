@@ -37,6 +37,7 @@ mod transmitter {
         mtype: MessageType,
         content: Content,
         hash: [u8;32],
+        timestamp: Timestamp,
     }
 
     #[derive(PartialEq, scale::Decode, scale::Encode)]
@@ -246,6 +247,7 @@ mod transmitter {
         pub fn send_message(&mut self, from: Username, to: Username, mtype: MessageType, content: Content) -> Result<(),Error> {
 
             let transferred = self.env().transferred_value();
+            let timestamp = self.env().block_timestamp();
 
             if let Some(balance) = self.balances.get(&self.env().caller()) {
 
@@ -281,7 +283,7 @@ mod transmitter {
 
                     let hash = self.env().hash_bytes::<Sha2x256>(&to_be_hashed);
 
-                    messages.push( Message { from, mtype, content, hash });
+                    messages.push( Message { from, mtype, content, hash, timestamp });
 
                     self.messages.insert(&to, &messages);
 
@@ -297,7 +299,7 @@ mod transmitter {
 
                     let hash = self.env().hash_bytes::<Sha2x256>(&content);
 
-                    messages.push( Message { from, mtype, content, hash } );
+                    messages.push( Message { from, mtype, content, hash, timestamp } );
 
                     self.messages.insert(&to, &messages);
 
