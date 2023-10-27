@@ -51,19 +51,6 @@ mod transmitter {
         price: Balance,
     }
 
-    #[ink(storage)]
-    pub struct Transmitter {
-        usernames: Mapping<Username,AccountId>,
-        users: Mapping<AccountId,Vec<Username>>,
-        messages: Mapping<Username,Vec<Message>>,
-        balances: Mapping<AccountId,Balance>,
-        sale_offers: Lazy<Vec<Sale>>,
-        owner: AccountId,
-        owner_balance: Balance,
-        registration_fee: Balance,
-        fee_payment_dates: Mapping<Username,Timestamp>,
-    }
-
     #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
     #[cfg_attr(
         feature = "std",
@@ -92,6 +79,19 @@ mod transmitter {
         UsernameAlreadyInSale,
         UsernameNotInSale,
         NoSalesForYou,
+    }
+
+    #[ink(storage)]
+    pub struct Transmitter {
+        usernames: Mapping<Username,AccountId>,
+        users: Mapping<AccountId,Vec<Username>>,
+        messages: Mapping<Username,Vec<Message>>,
+        balances: Mapping<AccountId,Balance>,
+        sale_offers: Lazy<Vec<Sale>>,
+        owner: AccountId,
+        owner_balance: Balance,
+        registration_fee: Balance,
+        fee_payment_dates: Mapping<Username,Timestamp>,
     }
 
     impl Transmitter {
@@ -894,19 +894,19 @@ mod transmitter {
             }
 
             macro_rules! get_all_messages {
-                () => {
+                ($username:literal) => {
 
                     build_message::<TransmitterRef>(contract_account_id.clone())
-                        .call(|transmitter| transmitter.get_all_messages())
+                        .call(|transmitter| transmitter.get_all_messages($username.into()))
 
                 }
             }
 
             macro_rules! delete_all_messages {
-                () => {
+                ($username:literal) => {
 
-                    build_message::<TransmitterRed>(contract_account_id.clone())
-                        .call(|transmitter| transmitter.delete_all_messages())
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.delete_all_messages($username.into()))
 
                 }
             }
@@ -962,7 +962,7 @@ mod transmitter {
             if let Err(e) = send_message_alice_result.expect("Error w/ 'send_message_alice'").return_value() { panic!("{:?}",e) };
 
 
-            let get_all_messages = get_all_messages!();
+            let get_all_messages = get_all_messages!("Bob");
 
             let get_all_messages_result = call_run!(bob: get_all_messages, pay 0);
 
@@ -997,7 +997,7 @@ mod transmitter {
             if let Err(e) = send_message_result.expect("Error w/ 'send_message_bob.").return_value() { panic!("{:?}",e) };
 
 
-            let get_all_messages = get_all_messages!();
+            let get_all_messages = get_all_messages!("Alice");
 
             let get_all_messages_result = call_run!(alice: get_all_messages, pay 0);
 
@@ -1010,7 +1010,7 @@ mod transmitter {
 
                     }
 
-                    if messages[0].content != "Hello, Bob!".into() {
+                    if messages[0].content != "Hello, Alice! How are you?".into() {
 
                         panic!("Error: incorrect message received by alice.");
 
@@ -1024,9 +1024,26 @@ mod transmitter {
                 }
             }
 
-            let delete_all_messages = delete_all_messages!();
+
+            let delete_all_messages = delete_all_messages!("Alice");
 
             let delete_all_messages_result = call_run!(alice: delete_all_messages, pay 0);
+
+            if let Err(e) = delete_all_messages_result.expect("Error w/ 'delete_all_messages (alice)'").return_value() {
+
+                panic!("{:?}",e);
+
+            }
+
+            let delete_all_messages = delete_all_messages!("Bob");
+
+            let delete_all_messages_result = call_run!(bob: delete_all_messages, pay 0);
+
+            if let Err(e) = delete_all_messages_result.expect("Error w/ 'delete_all_messages (bob)'").return_value() {
+
+                panic!("{:?}",e);
+                
+            }
             
 
             Ok(())
