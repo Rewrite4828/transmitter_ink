@@ -7,7 +7,7 @@ mod transmitter {
     use ink::prelude::{string::String, vec::Vec};
     use ink::env::hash::Sha2x256;
 
-    pub type Username = Vec<u8>;
+    pub type Username = String;
     pub type Content = Vec<u8>;
 
     #[derive(PartialEq, scale::Decode, scale::Encode)]
@@ -81,17 +81,47 @@ mod transmitter {
         NoSalesForYou,
     }
 
+    #[derive(Clone,Debug,PartialEq,scale::Decode, scale::Encode)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub struct UserInfo {
+        usernames: Option<Vec<Username>>,
+        balance: Balance,
+    }
+
+    #[derive(PartialEq,scale::Decode, scale::Encode)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub struct UsernameInfo {
+        account_id: AccountId,
+        messages: Option<Vec<Message>>,
+        fee_payment_time: Timestamp,
+    }
+
+    #[derive(Debug,PartialEq,scale::Decode, scale::Encode)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub struct OwnerInfo {
+        account_id: AccountId,
+        balance: Balance,
+    }
+
     #[ink(storage)]
     pub struct Transmitter {
-        usernames: Mapping<Username,AccountId>,
-        users: Mapping<AccountId,Vec<Username>>,
-        messages: Mapping<Username,Vec<Message>>,
-        balances: Mapping<AccountId,Balance>,
-        sale_offers: Lazy<Vec<Sale>>,
-        owner: AccountId,
-        owner_balance: Balance,
+        users: Mapping<AccountId,UserInfo>,
+        usernames: Mapping<Username,UsernameInfo>,
+        // messages: Mapping<Username,Vec<Message>>,
+        // balances: Mapping<AccountId,Balance>,
+        sale_offers: Lazy<Option<Vec<Sale>>>,
+        owner: OwnerInfo,
         registration_fee: Balance,
-        fee_payment_dates: Mapping<Username,Timestamp>,
+        // fee_payment_dates: Mapping<Username,Timestamp>,
     }
 
     impl Transmitter {
@@ -102,13 +132,12 @@ mod transmitter {
             Transmitter {
                 usernames: Mapping::new(),
                 users: Mapping::new(),
-                messages: Mapping::new(),
-                balances: Mapping::new(),
+                // messages: Mapping::new(),
+                // balances: Mapping::new(),
                 sale_offers: Lazy::new(),
-                owner: Self::env().caller(),
-                owner_balance: 0,
+                owner: OwnerInfo { account_id: Self::env().caller(), balance: 0 },
                 registration_fee: 1,
-                fee_payment_dates: Mapping::new(),
+                // fee_payment_dates: Mapping::new(),
             }
         }
 
@@ -122,82 +151,86 @@ mod transmitter {
         /// The correct registration fee must be paid (use 'get_registration_fee').
         /// If the payment does not equal the fee, the remainder is stored in your account's balance.
         #[ink(message,payable)]
-        pub fn register_username(&mut self, name: Vec<u8>) -> Result<(),Error> {
+        pub fn register_username(&mut self, name: String) -> Result<(),Error> {
 
             let transferred = self.env().transferred_value();
             let timestamp = self.env().block_timestamp();
 
-            if transferred < self.registration_fee {
+            if let Some(_) = self.usernames.get(&name) {
 
-                if let Some(balance) = self.balances.get(&self.env().caller()) {
+                return Err(Error::NameTaken);
 
-                    self.balances.insert(&self.env().caller(), &(balance + transferred));
+            }
 
-                } else {
+            let mut user_balance: Balance = 0;
 
-                    self.balances.insert(&self.env().caller(), &transferred);
+            if transferred > self.registration_fee {
 
-                }
+                self.owner.balance += self.registration_fee;
+
+                user_balance += transferred - self.registration_fee;
+
+            } else if transferred < self.registration_fee {
+
+                user_balance += transferred;
+
+                let new_user_info = UserInfo { usernames: None, balance: user_balance };
+
+                self.users.insert(&self.env().caller(), &new_user_info);
 
                 return Err(Error::PaymentFailed {
                     received: transferred,
                     required: self.registration_fee,
-                    missing: self.registration_fee - transferred }
-                );
-
-            } else if transferred == self.registration_fee {
-
-                self.owner_balance += transferred;
-
-            } else {
-
-                self.owner_balance += self.registration_fee;
-
-                if let Some(balance) = self.balances.get(&self.env().caller()) {
-
-                    self.balances.insert(&self.env().caller(), &(balance + (transferred - self.registration_fee)));
-
-                } else {
-
-                    self.balances.insert(&self.env().caller(), &(transferred - self.registration_fee));
-
-                }
+                    missing:  self.registration_fee - transferred
+                });
 
             }
 
-            if name.len() == 0 {
-                
-                return Err(Error::InvalidName);
+            if let Some(user_info) = self.users.get(&self.env().caller()) {
 
-            }
+                let mut usernames = user_info.usernames.unwrap_or(Vec::new());
 
-            if self.usernames.contains(&name) {
+                usernames.push(name.clone());
 
-                return Err(Error::NameTaken);
+                let balance = user_info.balance + user_balance;
+
+                let new_user_info = UserInfo {
+                    usernames: Some(usernames),
+                    balance,
+                };
+
+                self.users.insert(&self.env().caller(), &new_user_info);
+
+
+                let new_username_info = UsernameInfo {
+                    account_id: self.env().caller(),
+                    messages: None,
+                    fee_payment_time: timestamp,
+                };
+
+                self.usernames.insert(&name, &new_username_info);
+
+                return Ok(());
 
             } else {
 
-                self.usernames.insert(&name,&self.env().caller());
 
-                if let Some(mut user_names) = self.users.get(&self.env().caller()) {
+                let mut usernames = Vec::<Username>::new();
 
-                    self.fee_payment_dates.insert(&name, &timestamp);
+                usernames.push(name.clone());
 
-                    user_names.push(name);
+                let new_user_info = UserInfo { usernames: Some(usernames), balance: user_balance };
 
-                    self.users.insert(&self.env().caller(), &user_names);
+                self.users.insert(&self.env().caller(), &new_user_info);
 
-                } else {
 
-                    let mut user_names = Vec::<Username>::new();
+                let new_username_info = UsernameInfo {
+                    account_id: self.env().caller(),
+                    messages: None,
+                    fee_payment_time: timestamp,
+                };
 
-                    self.fee_payment_dates.insert(&name, &timestamp);
-
-                    user_names.push(name);
-
-                    self.users.insert(&self.env().caller(), &user_names);
-
-                }
+                self.usernames.insert(&name, &new_username_info);
 
                 return Ok(());
 
@@ -209,13 +242,21 @@ mod transmitter {
         #[ink(message)]
         pub fn get_usernames(&self) -> Result<Vec<Username>,Error> {
 
-            if let Some(user_names) = self.users.get(&self.env().caller()) {
+            if let Some(user_info) = self.users.get(&self.env().caller()) {
 
-                return Ok(user_names);
+                if let Some(usernames) = user_info.usernames {
+
+                    return Ok(usernames);
+
+                } else {
+
+                    return Err(Error::NoNames);
+
+                }
 
             } else {
 
-                return Err(Error::NoNames);
+                return Err(Error::NoAccount);
 
             }
         }
@@ -230,9 +271,9 @@ mod transmitter {
 
             }
         
-            if let Some(balance) = self.balances.get(&self.env().caller()) {
+            if let Some(user_info) = self.users.get(&self.env().caller()) {
 
-                return Ok(balance);
+                return Ok(user_info.balance);
 
             } else {
 
@@ -246,67 +287,45 @@ mod transmitter {
         #[ink(message)]
         pub fn send_message(&mut self, from: Username, to: Username, mtype: MessageType, content: Content) -> Result<(),Error> {
 
-            let transferred = self.env().transferred_value();
             let timestamp = self.env().block_timestamp();
 
-            if let Some(balance) = self.balances.get(&self.env().caller()) {
+            if let Some(username_info) = self.usernames.get(&from) {
 
-                let balance = balance + transferred;
-
-                self.balances.insert(&self.env().caller(),&balance);
-
-            } else {
-
-                self.balances.insert(&self.env().caller(),&transferred);
-
-            }
-
-            if let Some(account_id) = self.usernames.get(&from) {
-
-                if account_id != self.env().caller() {
+                if username_info.account_id != self.env().caller() {
 
                     return Err(Error::WrongAccount(from));
 
                 }
 
-                if let None = self.usernames.get(&to) {
+                if let Some(username_info) = self.usernames.get(&to) {
 
-                    return Err(Error::NameNonexistent(to));
-
-                }
-
-                if let Some(mut messages) = self.messages.get(&to) {
+                    let mut messages = username_info.messages.unwrap_or(Vec::new());
 
                     let mut to_be_hashed = Vec::<u8>::new();
                     to_be_hashed.extend(self.env().block_number().to_be_bytes());
-                    to_be_hashed.extend(content.clone().iter());
+                    to_be_hashed.extend(content.clone().iter()); // Mayber hashing only the message content is enough?
 
                     let hash = self.env().hash_bytes::<Sha2x256>(&to_be_hashed);
 
                     messages.push( Message { from, mtype, content, hash, timestamp });
 
-                    self.messages.insert(&to, &messages);
+                    let new_username_info = UsernameInfo {
+                        account_id: username_info.account_id,
+                        messages: Some(messages),
+                        fee_payment_time: username_info.fee_payment_time,
+                    };
+
+                    self.usernames.insert(&to, &new_username_info);
 
                     return Ok(());
 
                 } else {
 
-                    let mut messages = Vec::<Message>::new();
-
-                    let mut to_be_hashed = Vec::<u8>::new();
-                    to_be_hashed.extend(self.env().block_number().to_be_bytes());
-                    to_be_hashed.extend(content.clone().iter());
-
-                    let hash = self.env().hash_bytes::<Sha2x256>(&content);
-
-                    messages.push( Message { from, mtype, content, hash, timestamp } );
-
-                    self.messages.insert(&to, &messages);
-
-                    return Ok(());
+                    return Err(Error::NameNonexistent(to));
 
                 }
 
+                
             } else {
 
                 return Err(Error::NameNonexistent(from));
@@ -319,15 +338,15 @@ mod transmitter {
         #[ink(message,payable)]
         pub fn get_all_messages(&self, belonging_to: Username) -> Result<Vec<Message>,Error> {
             
-            if let Some(account_id) = self.usernames.get(&belonging_to) {
+            if let Some(username_info) = self.usernames.get(&belonging_to) {
 
-                if account_id != self.env().caller() {
+                if self.env().caller() != username_info.account_id {
 
                     return Err(Error::WrongAccount(belonging_to));
 
                 }
 
-                if let Some(messages) = self.messages.get(&belonging_to) {
+                if let Some(messages) = username_info.messages {
 
                     if messages.len() == 0 {
 
@@ -355,15 +374,15 @@ mod transmitter {
         #[ink(message)]
         pub fn delete_message(&mut self, belonging_to: Username, hash: [u8;32]) -> Result<(),Error> {
 
-            if let Some(account_id) = self.usernames.get(&belonging_to) {
+            if let Some(username_info) = self.usernames.get(&belonging_to) {
 
-                if account_id != self.env().caller() {
+                if username_info.account_id != self.env().caller() {
 
                     return Err(Error::WrongAccount(belonging_to));
 
                 }
 
-                if let Some(mut messages) = self.messages.get(&belonging_to) {
+                if let Some(mut messages) = username_info.messages {
 
                     let mut msg_pos = None;
 
@@ -380,6 +399,14 @@ mod transmitter {
                     if let Some(pos) = msg_pos {
 
                         messages.remove(pos);
+
+                        let username_info = UsernameInfo {
+                            account_id: self.env().caller(),
+                            messages: if messages.len() == 0 { None } else { Some(messages) },
+                            fee_payment_time: username_info.fee_payment_time,
+                        };
+
+                        self.usernames.insert(&belonging_to, &username_info);
 
                         return Ok(());
 
@@ -406,15 +433,17 @@ mod transmitter {
         #[ink(message)]
         pub fn delete_all_messages(&mut self, username: Username) -> Result<(),Error> {
 
-            if let Some(account_id) = self.usernames.get(&username) {
+            if let Some(mut username_info) = self.usernames.get(&username) {
 
-                if account_id != self.env().caller() {
+                if username_info.account_id != self.env().caller() {
 
                     return Err(Error::WrongAccount(username));
 
                 }
 
-                self.messages.insert(&username, &Vec::<Message>::new());
+                username_info.messages = None;
+
+                self.usernames.insert(&username, &username_info);
 
                 return Ok(());
 
@@ -428,21 +457,24 @@ mod transmitter {
         /// Attempts to send the balance associated to your account back to you.
         #[ink(message)]
         pub fn withdraw_balance(&mut self) -> Result<(),Error> {
-            if let Some(balance) = self.balances.get(&self.env().caller()) {
 
-                if balance == 0 {
+            if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                if user_info.balance == 0 {
 
                     return Err(Error::NoBalance);
 
                 }
 
-                if let Err(_) = self.env().transfer(self.env().caller(), balance) {
+                if let Err(_) = self.env().transfer(self.env().caller(), user_info.balance) {
 
                     return Err(Error::WithdrawFailed);
 
                 } else {
 
-                    self.balances.insert(&self.env().caller(), &0);
+                    user_info.balance = 0;
+
+                    self.users.insert(&self.env().caller(), &user_info);
 
                     return Ok(());
 
@@ -459,31 +491,45 @@ mod transmitter {
         #[ink(message)]
         pub fn sell_username_to(&mut self, username: Username, to: AccountId, price: Balance) -> Result<(),Error> {
 
-            if let Some(account_id) = self.usernames.get(&username) {
+            if let Some(username_info) = self.usernames.get(&username) {
 
-                if account_id != self.env().caller() {
+                if username_info.account_id != self.env().caller() {
 
                     return Err(Error::WrongAccount(username));
 
                 }
 
-                if let Some(mut sale_offers) = self.sale_offers.get() {
+                if let Some(sale_offers) = self.sale_offers.get() {
 
-                    for sale in sale_offers.iter() {
+                    if let Some(mut sale_offers) = sale_offers {
 
-                        if sale.username == username {
-    
-                            return Err(Error::UsernameAlreadyInSale);
-    
+                        for sale in sale_offers.iter() {
+
+                            if sale.username == username {
+        
+                                return Err(Error::UsernameAlreadyInSale);
+        
+                            }
+        
                         }
     
+                        sale_offers.push(Sale { username, to, price });
+    
+                        self.sale_offers.set(&Some(sale_offers));
+    
+                        return Ok(());
+
+                    } else {
+
+                        let mut sale_offers = Vec::<Sale>::new();
+
+                        sale_offers.push(Sale { username, to, price });
+
+                        self.sale_offers.set(&Some(sale_offers));
+
+                        return Ok(());
+
                     }
-
-                    sale_offers.push(Sale { username, to, price });
-
-                    self.sale_offers.set(&sale_offers);
-
-                    return Ok(());
 
                 } else {
 
@@ -491,7 +537,7 @@ mod transmitter {
 
                     sale_offers.push(Sale { username, to, price });
 
-                    self.sale_offers.set(&sale_offers);
+                    self.sale_offers.set(&Some(sale_offers));
 
                     return Ok(());
 
@@ -510,43 +556,60 @@ mod transmitter {
         #[ink(message)]
         pub fn cancel_sale(&mut self, username: Username) -> Result<(),Error> {
 
-            if let Some(account_id) = self.usernames.get(&username) {
+            if let Some(username_info) = self.usernames.get(&username) {
 
-                if account_id != self.env().caller() {
+                if username_info.account_id != self.env().caller() {
 
                     return Err(Error::WrongAccount(username));
 
                 }
 
-                if let Some(mut sale_offers) = self.sale_offers.get() {
+                if let Some(sale_offers) = self.sale_offers.get() {
 
-                    let mut sale_pos: Option<usize> = None;
+                    if let Some(mut sale_offers) = sale_offers {
 
-                    for (pos, sale) in sale_offers.iter().enumerate() {
+                        let mut sale_pos: Option<usize> = None;
 
-                        if sale.username == username {
-
-                            sale_pos = Some(pos);
-
-                            break;
-
+                        for (pos, sale) in sale_offers.iter().enumerate() {
+    
+                            if sale.username == username {
+    
+                                sale_pos = Some(pos);
+    
+                                break;
+    
+                            }
+    
                         }
+    
+                        if let Some(pos) = sale_pos {
+    
+                            sale_offers.remove(pos);
 
-                    }
+                            if sale_offers.len() == 0 {
 
-                    if let Some(pos) = sale_pos {
+                                self.sale_offers.set(&None);
 
-                        sale_offers.remove(pos);
+                            } else {
 
-                        self.sale_offers.set(&sale_offers);
+                                self.sale_offers.set(&Some(sale_offers));
 
-                        return Ok(());
+                            }
+    
+                            return Ok(());
+    
+                        } else {
+    
+                            return Err(Error::UsernameNotInSale);
+    
+                        }
 
                     } else {
 
                         return Err(Error::UsernameNotInSale);
 
                     }
+                    
 
                 } else {
 
@@ -570,25 +633,33 @@ mod transmitter {
 
             if let Some(sale_offers) = sale_offers {
 
-                let mut sales_to_user = Vec::<Sale>::new();
+                if let Some(sale_offers) = sale_offers {
 
-                for sale in sale_offers.iter() {
+                    let mut sales_to_user = Vec::<Sale>::new();
 
-                    if sale.to == self.env().caller() {
-
-                        sales_to_user.push(Sale { username: sale.username.clone(), to: sale.to, price: sale.price } );
-
+                    for sale in sale_offers.iter() {
+    
+                        if sale.to == self.env().caller() {
+    
+                            sales_to_user.push(Sale { username: sale.username.clone(), to: sale.to, price: sale.price } );
+    
+                        }
+    
                     }
-
-                }
-
-                if sales_to_user.len() == 0 {
-
-                    return Err(Error::NoSalesForYou);
+    
+                    if sales_to_user.len() == 0 {
+    
+                        return Err(Error::NoSalesForYou);
+    
+                    } else {
+    
+                        return Ok(sales_to_user);
+    
+                    }
 
                 } else {
 
-                    return Ok(sales_to_user);
+                    return Err(Error::NoSalesForYou);
 
                 }
 
@@ -615,25 +686,25 @@ mod transmitter {
         /// Attempts to close your account. Any remaining balance will be sent back to you.
         #[ink(message)]
         pub fn close_account(&mut self) -> Result<(),Error> {
-            if let Some(usernames) = self.users.get(&self.env().caller()) {
+            if let Some(user_info) = self.users.get(&self.env().caller()) {
 
-                if let Some(balance) = self.balances.get(&self.env().caller()) {
+                if user_info.balance > 0 {
 
-                    if let Err(_) = self.env().transfer(self.env().caller(), balance) {
+                    if let Err(_) = self.env().transfer(self.env().caller(), user_info.balance) {
 
                         return Err(Error::CloseAccountFailed);
 
                     }
 
-                    self.balances.remove(&self.env().caller());
-
                 }
+            
+                if let Some(usernames) = user_info.usernames {
 
-                for username in usernames.iter() {
+                    for username in usernames.iter() {
 
-                    self.messages.remove(username);
-
-                    self.usernames.remove(username);
+                        self.usernames.remove(username);
+    
+                    }
 
                 }
 
@@ -652,9 +723,9 @@ mod transmitter {
         #[ink(message)]
         pub fn co_transfer_contract_ownership(&mut self, new_owner: AccountId) -> Result<(),Error> {
 
-            if self.env().caller() == self.owner {
+            if self.env().caller() == self.owner.account_id {
 
-                self.owner = new_owner;
+                self.owner.account_id = new_owner;
 
                 return Ok(());
 
@@ -669,9 +740,11 @@ mod transmitter {
         /// Updated the contract code. Can only be called by the contract owner.
         #[ink(message)]
         pub fn co_set_code(&mut self, code_hash: ink::primitives::Hash) -> Result<(),Error> {
-            if self.env().caller() == self.owner {
+
+            if self.env().caller() == self.owner.account_id {
 
                 match self.env().set_code_hash(&code_hash) {
+
                     Ok(()) => {
 
                         return Ok(());
@@ -682,6 +755,7 @@ mod transmitter {
                         return Err(Error::UpgradeFailed)
 
                     }
+
                 }
 
 
@@ -690,13 +764,14 @@ mod transmitter {
                 return Err(Error::NotContractOwner);
 
             }
+
         }
 
         /// Sets a new value for the username registration fee. Can only be called by the contract owner.
         #[ink(message)]
         pub fn co_set_fee(&mut self, new_fee: Balance) -> Result<(),Error> {
 
-            if self.env().caller() == self.owner {
+            if self.env().caller() == self.owner.account_id {
 
                 self.registration_fee = new_fee;
 
@@ -712,17 +787,17 @@ mod transmitter {
 
         /// Withdraw the balance stored. Can only be called by the contract owner.
         #[ink(message)]
-        pub fn co_owner_withdraw_balance(&mut self) -> Result<(),Error> {
+        pub fn co_owner_withdraw_all_balance(&mut self) -> Result<(),Error> {
 
-            if self.owner_balance > 0 {
+            if self.owner.balance > 0 {
 
-                if let Err(_) = self.env().transfer(self.owner, self.owner_balance) {
+                if let Err(_) = self.env().transfer(self.owner.account_id, self.owner.balance) {
 
                     return Err(Error::WithdrawFailed);
 
                 } else {
 
-                    self.owner_balance = 0;
+                    self.owner.balance = 0;
 
                     return Ok(());
 
@@ -1044,7 +1119,6 @@ mod transmitter {
                 panic!("{:?}",e);
                 
             }
-            
 
             Ok(())
         }
