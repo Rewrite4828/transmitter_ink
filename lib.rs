@@ -674,13 +674,277 @@ mod transmitter {
         /// Executes a proposed sale.
         #[ink(message,payable)]
         pub fn buy_username(&mut self, username: Username) -> Result<(),Error> {
-            todo!()
+
+
+            // Get the value that was transferred to contract.
+            let transferred = self.env().transferred_value();
+
+            // Check if the username that is about to be bought actually exists.
+            // If it doesn't, place the transferred value into the caller's balance.
+            if let None = self.usernames.get(&username) {
+
+                if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                    user_info.balance += transferred;
+
+                    self.users.insert(&self.env().caller(), &user_info);
+
+                } else {
+                    let new_user_info = UserInfo {
+                        usernames: None,
+                        balance: transferred,
+                    };
+
+                    self.users.insert(&self.env().caller(), &new_user_info);
+                }
+
+                return Err(Error::NameNonexistent(username));
+
+            }
+
+            // Check if there are sales and get the list.
+            if let Some(sales) = self.sale_offers.get() {
+
+                // Idem.
+                if let Some(sales) = sales {
+
+                    let username_ref = &username;
+
+                    // Run through the list of sales.
+                    for sale in sales.iter() {
+
+                        // If the username is in the list and to be salled to the caller, then
+                        if (&sale.username == username_ref) && (sale.to == self.env().caller()) {
+
+                            // Get the info associated to the username. We have already verified its existence.
+                            let username_info = self.usernames.get(username_ref).unwrap();
+
+                            // handle the three possible cases of transferred value (too litte, same or too much).
+
+                            // If the exact amount was transferred:
+                            if transferred == sale.price {
+
+                                // calculate the 5% fee amount.
+                                let fee = (((5*transferred) as f32)/100.0) as u128;
+
+                                // Add the fee to the owner's balance.
+                                self.owner.balance += fee;
+
+                                // Get the user info of the previous username owner. It must exist, because otherwise
+                                // the whole contract is messed up.
+                                let mut user_info = self.users.get(&username_info.account_id).unwrap();
+
+                                // Update the seller's balance.
+                                user_info.balance += transferred - fee;
+
+                                // Remove the username.
+                                let mut usernames = user_info.usernames.unwrap_or(Vec::new());
+
+                                let mut pos: usize = 0;
+
+                                for (i,username) in usernames.iter().enumerate() {
+                                    if username == username_ref {
+                                        pos = i;
+                                        break;
+                                    }
+                                }
+
+                                if usernames.len() > 0 {
+                                    usernames.remove(pos);
+                                }
+
+                                user_info.usernames = Some(usernames);
+
+                                self.users.insert(&self.env().caller(), &user_info);
+
+                                // Give the username to the new user.
+                                if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                                    let mut usernames = user_info.usernames.unwrap_or(Vec::new());
+                                    usernames.push(username_ref.to_string());
+
+                                    user_info.usernames = Some(usernames);
+
+                                    self.users.insert(&self.env().caller(), &user_info);
+
+                                } else {
+
+                                    let mut usernames = Vec::<Username>::new();
+                                    usernames.push(username_ref.to_string());
+
+                                    let new_user_info = UserInfo {
+                                        usernames: Some(usernames),
+                                        balance: 0,
+                                    };
+
+                                    self.users.insert(&self.env().caller(), &new_user_info);
+
+                                }
+
+                                return Ok(())
+
+                            } else {
+
+                                if transferred > sale.price {
+
+                                    // calculate the 5% fee amount.
+                                    let fee = (((5*sale.price) as f32)/100.0) as u128;
+
+                                    // Add the fee to the owner's balance.
+                                    self.owner.balance += fee;
+
+                                    // Get the user info of the previous username owner. It must exist, because otherwise
+                                    // the whole contract is messed up.
+                                    let mut user_info = self.users.get(&username_info.account_id).unwrap();
+
+                                    // Update the seller's balance.
+                                    user_info.balance += sale.price - fee;
+
+                                    // Remove the username.
+                                    let mut usernames = user_info.usernames.unwrap_or(Vec::new());
+
+                                    let mut pos: usize = 0;
+
+                                    for (i,username) in usernames.iter().enumerate() {
+                                        if username == username_ref {
+                                            pos = i;
+                                            break;
+                                        }
+                                    }
+
+                                    if usernames.len() > 0 {
+                                        usernames.remove(pos);
+                                    }
+
+                                    user_info.usernames = Some(usernames);
+
+                                    self.users.insert(&self.env().caller(), &user_info);
+
+                                    // Give the username to the new user.
+                                    if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                                        let mut usernames = user_info.usernames.unwrap_or(Vec::new());
+                                        usernames.push(username_ref.to_string());
+
+                                        user_info.usernames = Some(usernames);
+                                        user_info.balance += transferred - sale.price;
+
+                                        self.users.insert(&self.env().caller(), &user_info);
+
+                                    } else {
+
+                                        let mut usernames = Vec::<Username>::new();
+                                        usernames.push(username_ref.to_string());
+
+                                        let new_user_info = UserInfo {
+                                            usernames: Some(usernames),
+                                            balance: transferred - sale.price,
+                                        };
+
+                                        self.users.insert(&self.env().caller(), &new_user_info);
+
+                                    }
+
+                                    return Ok(())
+
+                                } else {
+
+                                    if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                                        user_info.balance += transferred;
+
+                                        self.users.insert(&self.env().caller(), &user_info);
+
+                                    } else {
+
+                                        let new_user_info = UserInfo {
+                                            usernames: None,
+                                            balance: transferred,
+                                        };
+
+                                        self.users.insert(&self.env().caller(),&new_user_info);
+
+                                    }
+
+                                    return Err(Error::PaymentFailed {
+                                        received: transferred,
+                                        required: sale.price,
+                                        missing: sale.price - transferred,
+                                    });
+
+                                }
+                                
+                            }
+
+                        }
+
+                    }
+
+                    return Err(Error::NoSalesForYou);
+
+                } else {
+
+                    return Err(Error::NoSalesForYou);
+
+                }
+
+            } else {
+
+                return Err(Error::NoSalesForYou);
+
+            }
         }
 
         /// A sale proposition made to you is cancelled.
         #[ink(message)]
         pub fn refuse_to_buy(&mut self, username: Username) -> Result<(),Error> {
-            todo!()
+            
+            if let None = self.usernames.get(&username) {
+                return Err(Error::NameNonexistent(username));
+            }
+
+            if let Some(sales) = self.sale_offers.get() {
+
+                if let Some(mut sales) = sales {
+
+                    let mut sale_pos: Option<usize> = None;
+
+                    for (pos,sale) in sales.iter().enumerate() {
+
+                        if (&sale.username == &username) && (sale.to == self.env().caller()) {
+
+                            sale_pos = Some(pos);
+                            break;
+
+                        } 
+
+                    }
+
+                    if let Some(pos) = sale_pos {
+
+                        sales.remove(pos);
+
+                        self.sale_offers.set(&Some(sales));
+
+                        return Ok(());
+
+                    } else {
+
+                        return Err(Error::NoSalesForYou);
+
+                    }
+
+                } else {
+
+                    return Err(Error::NoSalesForYou);
+
+                }
+
+            } else {
+
+                return Err(Error::NoSalesForYou);
+
+            }
         }
 
         /// Attempts to close your account. Any remaining balance will be sent back to you.
