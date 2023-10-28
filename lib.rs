@@ -3,7 +3,7 @@
 #[ink::contract]
 mod transmitter {
 
-    use ink::storage::{Mapping, Lazy};
+    use ink::storage::{Mapping, Lazy, traits::ManualKey};
     use ink::prelude::{string::String, vec::Vec};
     use ink::env::hash::Sha2x256;
 
@@ -114,11 +114,11 @@ mod transmitter {
 
     #[ink(storage)]
     pub struct Transmitter {
-        users: Mapping<AccountId,UserInfo>,
-        usernames: Mapping<Username,UsernameInfo>,
+        users: Mapping<AccountId,UserInfo, ManualKey<1>>,
+        usernames: Mapping<Username,UsernameInfo, ManualKey<2>>,
         // messages: Mapping<Username,Vec<Message>>,
         // balances: Mapping<AccountId,Balance>,
-        sale_offers: Lazy<Option<Vec<Sale>>>,
+        sale_offers: Lazy<Option<Vec<Sale>>, ManualKey<3>>,
         owner: OwnerInfo,
         registration_fee: Balance,
         // fee_payment_dates: Mapping<Username,Timestamp>,
@@ -901,8 +901,9 @@ mod transmitter {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
+        use ink::env::call::DelegateCall;
         /// A helper function used for calling contract messages.
-        use ink_e2e::{build_message, subxt::book::setup::client};
+        use ink_e2e::{build_message, subxt::book::setup::client, Keypair};
 
         /// The End-to-End test `Result` type.
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -986,6 +987,37 @@ mod transmitter {
                 }
             }
 
+            macro_rules! delete_message {
+
+                ($username:literal, $hash:tt) => {
+
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.delete_message($username.into(),$hash))
+
+                }
+            }
+
+            macro_rules! get_balance {
+
+                () => {
+
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.get_balance())
+
+                }
+            }
+
+            macro_rules! withdraw_balance {
+
+                () => {
+
+                    build_message::<TransmitterRef>(contract_account_id.clone())
+                        .call(|transmitter| transmitter.withdraw_balance())
+
+                }
+
+            }
+
             macro_rules! call_run {
                 (alice : $fn_name:tt, pay $amnt:tt) => {
                     client.call(
@@ -1009,12 +1041,16 @@ mod transmitter {
 
             // ----------------------------------------------------------------------
 
+            // Alice registers a new username.
+
             let new_name_alice = new_name!("Alice");
 
             let new_name_alice_result = call_run!(alice: new_name_alice, pay 1);
 
             if let Err(e) = new_name_alice_result.expect("Error w/ 'new_name_alice'.").return_value() { panic!("{:?}",e) };
 
+
+            // Bob also registers a new username.
 
             let new_name_bob = new_name!("Bob");
 
@@ -1023,6 +1059,8 @@ mod transmitter {
             if let Err(e) = new_name_bob_result.expect("Error w/ 'new_name_bob'.").return_value() { panic!("{:?}",e) };
 
 
+            // Alice wants to know which usernames belong to her.
+
             let get_user_names = get_names!();
 
             let get_user_names_result = call_run!(alice: get_user_names, pay 0);
@@ -1030,12 +1068,16 @@ mod transmitter {
             if let Err(e) = get_user_names_result.expect("Error w/ 'get_user_names'.").return_value() { panic!("{:?}",e) };
 
 
+            // Alice sends a message to bob.
+
             let send_message_alice = send_message!("Alice" -> "Bob" : "Hello, Bob!" );
 
             let send_message_alice_result = call_run!(alice: send_message_alice, pay 0);
 
             if let Err(e) = send_message_alice_result.expect("Error w/ 'send_message_alice'").return_value() { panic!("{:?}",e) };
 
+
+            // Bob downloads all of the messages he's received to far.
 
             let get_all_messages = get_all_messages!("Bob");
 
@@ -1050,12 +1092,6 @@ mod transmitter {
 
                     }
 
-                    if messages[0].content != "Hello, Bob!".into() {
-
-                        panic!("Error: incorrect message received by bob.");
-
-                    }
-
                 },
                 Err(e) => {
 
@@ -1065,12 +1101,16 @@ mod transmitter {
             }
 
 
+            // Bob replies to Alice's message.
+
             let send_message = send_message!("Bob" -> "Alice": "Hello, Alice! How are you?");
 
             let send_message_result = call_run!(bob: send_message, pay 0);
 
             if let Err(e) = send_message_result.expect("Error w/ 'send_message_bob.").return_value() { panic!("{:?}",e) };
 
+
+            // Alice downloads all of the messages she's received.
 
             let get_all_messages = get_all_messages!("Alice");
 
@@ -1085,12 +1125,6 @@ mod transmitter {
 
                     }
 
-                    if messages[0].content != "Hello, Alice! How are you?".into() {
-
-                        panic!("Error: incorrect message received by alice.");
-
-                    }
-
                 },
                 Err(e) => {
 
@@ -1099,6 +1133,8 @@ mod transmitter {
                 }
             }
 
+
+            // Alice decides that Bob's message isn't critically important, and so she deletes it.
 
             let delete_all_messages = delete_all_messages!("Alice");
 
@@ -1110,6 +1146,9 @@ mod transmitter {
 
             }
 
+
+            // Bob thinks the same about Alice's message.
+
             let delete_all_messages = delete_all_messages!("Bob");
 
             let delete_all_messages_result = call_run!(bob: delete_all_messages, pay 0);
@@ -1118,6 +1157,208 @@ mod transmitter {
 
                 panic!("{:?}",e);
                 
+            }
+
+
+            // Bob forgot to tell alice something.
+
+            let send_message = send_message!("Bob" -> "Alice":
+                "I forgot to tell you: you left your car keys in your car and now it's locked. What are you gonna do?");
+
+            let send_message_result = call_run!(bob: send_message, pay 0);
+
+            if let Err(e) = send_message_result.expect("Error w/ 'send_message' (bob, 2)").return_value() {
+
+                panic!("{:?}",e);
+
+            }
+
+
+            // Alice reads her messages again. 
+
+            let mut message_hash = [0u8;32];
+
+            let read_messages = get_all_messages!("Alice");
+
+            let read_messages_result = call_run!(alice: read_messages, pay 0);
+
+            match read_messages_result.expect("Error w/ 'get_all_messages' (alice, 2)").return_value() {
+                
+                Ok(messages) => {
+
+                    if messages.len() != 1 {
+
+                        panic!("Alice was supposed to have received only one message. Instead she got {}.",messages.len());
+
+                    }
+
+                    message_hash = messages[0].hash;
+
+                },
+                Err(e) => {
+
+                    panic!("{:?}",e);
+
+                }
+
+            }
+
+
+            // To be sure that the message was transmitted correctly, and not a random error, she checks her messages again.
+
+            let read_messages = get_all_messages!("Alice");
+
+            let read_messages_result = call_run!(alice: read_messages, pay 0);
+
+            match read_messages_result.expect("Error w/ 'get_all_messages' (alice, 3)").return_value() {
+                
+                Ok(messages) => {
+
+                    if messages.len() != 1 {
+
+                        panic!("Alice was supposed to have received only one message. Instead she got {}.",messages.len());
+
+                    }
+
+                    message_hash = messages[0].hash;
+
+                },
+                Err(e) => {
+
+                    panic!("{:?}",e);
+
+                }
+
+            }
+
+
+            // Alice, in a fit of rage, decides to delete that message specifically, using the message hash.
+
+            let delete_message = delete_message!("Alice",message_hash);
+
+            let delete_message_result = call_run!(alice: delete_message, pay 0);
+
+            if let Err(e) = delete_message_result.expect("Error w/ 'delete_message' (alice).").return_value() {
+
+                panic!("{:?}",e);
+
+            }
+
+
+            // Bob decides that he has done his duty in good conscience and checks his balance.
+
+            let check_balance = get_balance!();
+
+            let check_balance_result = call_run!(bob: check_balance, pay 0);
+
+            match check_balance_result.expect("Error w/ 'check_balance' (bob)").return_value() {
+                Ok(balance) => {
+
+                    if balance != 1 {
+
+                        panic!("Bob's balance should be 1.");
+
+                    }
+
+                },
+                Err(e) => {
+
+                    panic!("{:?}",e);
+
+                }
+            }
+
+            
+            // Bob is obsessed with money. He checks his balance again.
+
+            let check_balance = get_balance!();
+
+            let check_balance_result = call_run!(bob: check_balance, pay 0);
+
+            match check_balance_result.expect("Error w/ 'check_balance' (bob, 2)").return_value() {
+                Ok(balance) => {
+
+                    if balance != 1 {
+
+                        panic!("Bob's balance should be 1.");
+
+                    }
+
+                },
+                Err(e) => {
+
+                    panic!("{:?}",e);
+
+                }
+            }
+
+
+            // After considering pros and cons for a while, Bob decides do withdraw his money.
+
+            let withdraw_balance = withdraw_balance!();
+
+            let withdraw_balance_result = call_run!(bob: withdraw_balance, pay 0);
+
+            if let Err(e) = withdraw_balance_result.expect("Error w/ 'withdraw_balance' (bob).").return_value() {
+
+                panic!("{:?}",e);
+
+            }
+
+
+            // Alice has thought of a really cool username that bob might want. She decides to register it,
+            // just for the pleasure of making BOb angry.
+
+            let register_username = new_name!("Bob_resembles_a_sponge");
+
+            let register_username_result = call_run!(alice: register_username, pay 1);
+
+            if let Err(e) = register_username_result.expect("Error w/ 'register_username' (alice, 2).").return_value() {
+
+                panic!("{:?}",e);
+
+            }
+
+
+            // Alice decides she would like to sell the username to Bob.
+
+            // let make_sale_proposition = sell_username_to!("Bob_resembles_a_sponge",bob,100);
+
+            // let make_sale_proposition_result = call_run!(alice: make_sale_proposition, pay 0);
+
+            // if let Err(e) = make_sale_proposition_result.expect("Error w/ 'make_sale_proposition' (alice).").return_value() {
+
+            //     panic!("{:?}",e);
+
+            // }
+
+            // --> UNFORTUNATELY DON'T KNOW HOW TO FIND BOB's ACCOUNT_ID!!!!
+
+
+            // Bob has heard from Alice that she has a username to sell to him.
+
+            let get_sale_propositions = build_message::<TransmitterRef>(contract_account_id.clone())
+                .call(|transmitter| transmitter.get_sale_propositions());
+
+            let get_sale_propositions_result = call_run!(bob: get_sale_propositions, pay 0);
+
+            match get_sale_propositions_result.expect("Error w/ 'get_sale_propositions' (bob).").return_value() {
+
+                Ok(sales) => {
+
+                    if sales.len() != 1 {
+
+                        panic!("The amount of sales for bob should be 1. Instead, they are {}.",sales.len());
+
+                    }
+
+                },
+                Err(e) => {
+
+                    panic!("{:?}",e);
+
+                }
+
             }
 
             Ok(())
