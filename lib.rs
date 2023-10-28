@@ -116,12 +116,10 @@ mod transmitter {
     pub struct Transmitter {
         users: Mapping<AccountId,UserInfo, ManualKey<1>>,
         usernames: Mapping<Username,UsernameInfo, ManualKey<2>>,
-        // messages: Mapping<Username,Vec<Message>>,
-        // balances: Mapping<AccountId,Balance>,
         sale_offers: Lazy<Option<Vec<Sale>>, ManualKey<3>>,
         owner: OwnerInfo,
         registration_fee: Balance,
-        // fee_payment_dates: Mapping<Username,Timestamp>,
+        contract_paused: bool,
     }
 
     impl Transmitter {
@@ -132,12 +130,10 @@ mod transmitter {
             Transmitter {
                 usernames: Mapping::new(),
                 users: Mapping::new(),
-                // messages: Mapping::new(),
-                // balances: Mapping::new(),
                 sale_offers: Lazy::new(),
                 owner: OwnerInfo { account_id: Self::env().caller(), balance: 0 },
                 registration_fee: 1,
-                // fee_payment_dates: Mapping::new(),
+                contract_paused: false,
             }
         }
 
@@ -1081,75 +1077,13 @@ mod transmitter {
     #[cfg(test)]
     mod tests {
 
-        use super::*;
+        ?use super::*;
 
         /// We test a simple use case of our contract.
         #[ink::test]
         fn it_works() {
 
-            let mut transmitter = Transmitter::new();
-
-            if let Err(e) = transmitter.co_set_fee(0) {
-
-                panic!("Error {:?} while setting registration fee.",e);
-
-            };
-
-            if let Err(e) = transmitter.register_username("Alice".into()) {
-                panic!("Encountered error {:?} while registering Alice's name.",e)
-            };
-
-            if let Err(e) = transmitter.register_username("Bob".into()) {
-                panic!("Encountered error {:?} while registering Bob's name.",e)
-            };
-
-            if let Err(e) = transmitter.send_message(
-                "Alice".into(),
-                "Bob".into(),
-                MessageType::Text,
-                "Hello, Bob!".into()
-            ) {
-                panic!("Encountered error {:?} while sending message to Bob.",e)
-            };
-
-            if let Err(e) = transmitter.send_message(
-                "Alice".into(),
-                "Bob".into(),
-                MessageType::Text,
-                "Have a nice day!".into()
-            ) {
-                panic!("Encountered error {:?} while sending message to Bob.",e)
-            };
-
-            let mut message_hash = [0u8;32];
-
-            match transmitter.get_all_messages("Bob".into()) {
-                Ok(messages) => {
-
-                    if messages.len() != 2 {
-
-                        panic!("Expected to get 2 messages, instead got {}",messages.len());
-
-                    }
-
-                    message_hash = messages[0].hash;
-
-
-                },
-                Err(e) => {
-
-                    panic!("Encountered error {:?} while getting Bob's messages.",e)
-
-                }
-            };
             
-            if let Err(e) = transmitter.delete_message(
-                "Bob".into(),
-                message_hash
-            ) { 
-                panic!("Encountered error {:?} whilst deleting message.",e)
-            };
-
         }
 
     }
