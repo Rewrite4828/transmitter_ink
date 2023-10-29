@@ -177,6 +177,10 @@ mod transmitter {
                     missing:  self.registration_fee - transferred
                 });
 
+            } else {
+
+                self.owner.balance += transferred;
+
             }
 
             if let Some(user_info) = self.users.get(&self.env().caller()) {
