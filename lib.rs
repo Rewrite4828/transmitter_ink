@@ -69,6 +69,7 @@ mod transmitter {
         },
         WithdrawFailed,
         NoBalance,
+        NotEnoughBalance,
         NoAccount,
         CloseAccountFailed,
         UsernameAlreadyInSale,
@@ -1093,19 +1094,25 @@ mod transmitter {
 
         }
 
-        /// Withdraw the balance stored. Can only be called by the contract owner.
+
         #[ink(message)]
-        pub fn co_owner_withdraw_all_balance(&mut self) -> Result<(),Error> {
+        pub fn co_owner_withdraw_amount(&mut self, balance: Balance) -> Result<(),Error> {
 
-            if self.owner.balance > 0 {
+            if self.owner.account_id == self.env().caller() {
 
-                if let Err(_) = self.env().transfer(self.owner.account_id, self.owner.balance) {
+                if self.owner.balance < balance {
+
+                    return Err(Error::NotEnoughBalance);
+
+                }
+
+                if let Err(_) = self.env().transfer(self.owner.account_id, balance) {
 
                     return Err(Error::WithdrawFailed);
 
                 } else {
 
-                    self.owner.balance = 0;
+                    self.owner.balance -= balance;
 
                     return Ok(());
 
@@ -1113,8 +1120,42 @@ mod transmitter {
 
             } else {
 
-                return Err(Error::NoBalance);
+                return Err(Error::NotContractOwner);
 
+            }
+
+        }
+
+
+        /// Withdraw the balance stored. Can only be called by the contract owner.
+        #[ink(message)]
+        pub fn co_owner_withdraw_all_balance(&mut self) -> Result<(),Error> {
+
+            if self.owner.account_id == self.env().caller() {
+
+                if self.owner.balance > 0 {
+
+                    if let Err(_) = self.env().transfer(self.owner.account_id, self.owner.balance) {
+
+                        return Err(Error::WithdrawFailed);
+
+                    } else {
+
+                        self.owner.balance = 0;
+
+                        return Ok(());
+
+                    }
+
+                } else {
+
+                    return Err(Error::NoBalance);
+
+                }
+
+            } else {
+
+                return Err(Error::NotContractOwner);
             }
 
         }
