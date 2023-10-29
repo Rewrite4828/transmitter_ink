@@ -1096,7 +1096,7 @@ mod transmitter {
 
 
         #[ink(message)]
-        pub fn co_owner_withdraw_amount(&mut self, balance: Balance) -> Result<(),Error> {
+        pub fn co_withdraw_amount(&mut self, balance: Balance) -> Result<(),Error> {
 
             if self.owner.account_id == self.env().caller() {
 
@@ -1129,7 +1129,7 @@ mod transmitter {
 
         /// Withdraw the balance stored. Can only be called by the contract owner.
         #[ink(message)]
-        pub fn co_owner_withdraw_all_balance(&mut self) -> Result<(),Error> {
+        pub fn co_withdraw_all_balance(&mut self) -> Result<(),Error> {
 
             if self.owner.account_id == self.env().caller() {
 
