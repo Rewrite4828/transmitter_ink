@@ -19,11 +19,6 @@ mod transmitter {
         Text,
         Email { subject: String },
         ReplyTo { hash: [u8;32] },
-        // EmailAttachment { subject: String, mtype: Box<MessageType>}, //Looks like Box creates some problems - indeed
-        // Request { id: u32 },
-        // Response { id: u32, /*mtype: Box<MessageType>*/},
-        Json,
-        // Stream,
         Custom(String),
     }
 
@@ -79,6 +74,7 @@ mod transmitter {
         UsernameAlreadyInSale,
         UsernameNotInSale,
         NoSalesForYou,
+        UnexpectedInternalError,
     }
 
     #[derive(Clone,Debug,PartialEq,scale::Decode, scale::Encode)]
@@ -184,7 +180,11 @@ mod transmitter {
 
             if let Some(user_info) = self.users.get(&self.env().caller()) {
 
-                let mut usernames = user_info.usernames.unwrap_or(Vec::new());
+                let mut usernames = Vec::new();
+
+                if let Some(existing) = user_info.usernames {
+                    usernames = existing;
+                }
 
                 usernames.push(name.clone());
 
@@ -295,7 +295,13 @@ mod transmitter {
 
                 if let Some(username_info) = self.usernames.get(&to) {
 
-                    let mut messages = username_info.messages.unwrap_or(Vec::new());
+                    let mut messages = Vec::new();
+
+                    if let Some(existing) = username_info.messages {
+
+                        messages = existing;
+
+                    }
 
                     let mut to_be_hashed = Vec::<u8>::new();
                     to_be_hashed.extend(self.env().block_number().to_be_bytes());
@@ -713,163 +719,205 @@ mod transmitter {
                         if (&sale.username == username_ref) && (sale.to == self.env().caller()) {
 
                             // Get the info associated to the username. We have already verified its existence.
-                            let username_info = self.usernames.get(username_ref).unwrap();
+                            if let Some(username_info) = self.usernames.get(username_ref) {
 
-                            // handle the three possible cases of transferred value (too litte, same or too much).
+                                // handle the three possible cases of transferred value (too litte, same or too much).
 
-                            // If the exact amount was transferred:
-                            if transferred == sale.price {
-
-                                // calculate the 5% fee amount.
-                                let fee = (((5*transferred) as f32)/100.0) as u128;
-
-                                // Add the fee to the owner's balance.
-                                self.owner.balance += fee;
-
-                                // Get the user info of the previous username owner. It must exist, because otherwise
-                                // the whole contract is messed up.
-                                let mut user_info = self.users.get(&username_info.account_id).unwrap();
-
-                                // Update the seller's balance.
-                                user_info.balance += transferred - fee;
-
-                                // Remove the username.
-                                let mut usernames = user_info.usernames.unwrap_or(Vec::new());
-
-                                let mut pos: usize = 0;
-
-                                for (i,username) in usernames.iter().enumerate() {
-                                    if username == username_ref {
-                                        pos = i;
-                                        break;
-                                    }
-                                }
-
-                                if usernames.len() > 0 {
-                                    usernames.remove(pos);
-                                }
-
-                                user_info.usernames = Some(usernames);
-
-                                self.users.insert(&self.env().caller(), &user_info);
-
-                                // Give the username to the new user.
-                                if let Some(mut user_info) = self.users.get(&self.env().caller()) {
-
-                                    let mut usernames = user_info.usernames.unwrap_or(Vec::new());
-                                    usernames.push(username_ref.to_string());
-
-                                    user_info.usernames = Some(usernames);
-
-                                    self.users.insert(&self.env().caller(), &user_info);
-
-                                } else {
-
-                                    let mut usernames = Vec::<Username>::new();
-                                    usernames.push(username_ref.to_string());
-
-                                    let new_user_info = UserInfo {
-                                        usernames: Some(usernames),
-                                        balance: 0,
-                                    };
-
-                                    self.users.insert(&self.env().caller(), &new_user_info);
-
-                                }
-
-                                return Ok(())
-
-                            } else {
-
-                                if transferred > sale.price {
+                                // If the exact amount was transferred:
+                                if transferred == sale.price {
 
                                     // calculate the 5% fee amount.
-                                    let fee = (((5*sale.price) as f32)/100.0) as u128;
+                                    let fee = (((5*transferred) as f32)/100.0) as u128;
 
                                     // Add the fee to the owner's balance.
                                     self.owner.balance += fee;
 
                                     // Get the user info of the previous username owner. It must exist, because otherwise
                                     // the whole contract is messed up.
-                                    let mut user_info = self.users.get(&username_info.account_id).unwrap();
+                                    if let Some(mut user_info) = self.users.get(&username_info.account_id) {
 
-                                    // Update the seller's balance.
-                                    user_info.balance += sale.price - fee;
+                                        // Update the seller's balance.
+                                        user_info.balance += transferred - fee;
 
-                                    // Remove the username.
-                                    let mut usernames = user_info.usernames.unwrap_or(Vec::new());
+                                        // Remove the username.
+                                        let mut usernames = Vec::new();
 
-                                    let mut pos: usize = 0;
+                                        if let Some(existing) = user_info.usernames {
 
-                                    for (i,username) in usernames.iter().enumerate() {
-                                        if username == username_ref {
-                                            pos = i;
-                                            break;
+                                            usernames = existing;
+
                                         }
-                                    }
 
-                                    if usernames.len() > 0 {
-                                        usernames.remove(pos);
-                                    }
+                                        let mut pos: usize = 0;
 
-                                    user_info.usernames = Some(usernames);
+                                        for (i,username) in usernames.iter().enumerate() {
+                                            if username == username_ref {
+                                                pos = i;
+                                                break;
+                                            }
+                                        }
 
-                                    self.users.insert(&self.env().caller(), &user_info);
-
-                                    // Give the username to the new user.
-                                    if let Some(mut user_info) = self.users.get(&self.env().caller()) {
-
-                                        let mut usernames = user_info.usernames.unwrap_or(Vec::new());
-                                        usernames.push(username_ref.to_string());
+                                        if usernames.len() > 0 {
+                                            usernames.remove(pos);
+                                        }
 
                                         user_info.usernames = Some(usernames);
-                                        user_info.balance += transferred - sale.price;
 
                                         self.users.insert(&self.env().caller(), &user_info);
 
+                                        // Give the username to the new user.
+                                        if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                                            let mut usernames = Vec::new();
+
+                                            if let Some(existing) = user_info.usernames {
+
+                                                usernames = existing;
+
+                                            }
+
+                                            usernames.push(username_ref.into());
+
+                                            user_info.usernames = Some(usernames);
+
+                                            self.users.insert(&self.env().caller(), &user_info);
+
+                                        } else {
+
+                                            let mut usernames = Vec::<Username>::new();
+                                            usernames.push(username_ref.into());
+
+                                            let new_user_info = UserInfo {
+                                                usernames: Some(usernames),
+                                                balance: 0,
+                                            };
+
+                                            self.users.insert(&self.env().caller(), &new_user_info);
+
+                                        }
+
+                                        return Ok(())
+
                                     } else {
 
-                                        let mut usernames = Vec::<Username>::new();
-                                        usernames.push(username_ref.to_string());
-
-                                        let new_user_info = UserInfo {
-                                            usernames: Some(usernames),
-                                            balance: transferred - sale.price,
-                                        };
-
-                                        self.users.insert(&self.env().caller(), &new_user_info);
+                                        return Err(Error::UnexpectedInternalError);
 
                                     }
-
-                                    return Ok(())
 
                                 } else {
 
-                                    if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+                                    if transferred > sale.price {
 
-                                        user_info.balance += transferred;
+                                        // calculate the 5% fee amount.
+                                        let fee = (((5*sale.price) as f32)/100.0) as u128;
 
-                                        self.users.insert(&self.env().caller(), &user_info);
+                                        // Add the fee to the owner's balance.
+                                        self.owner.balance += fee;
+
+                                        // Get the user info of the previous username owner. It must exist, because otherwise
+                                        // the whole contract is messed up.
+                                        if let Some(mut user_info) = self.users.get(&username_info.account_id) {
+
+                                            // Update the seller's balance.
+                                            user_info.balance += sale.price - fee;
+
+                                            // Remove the username.
+                                            let mut usernames = Vec::new();
+
+                                            if let Some(existing) = user_info.usernames {
+
+                                                usernames = existing;
+
+                                            }
+
+                                            let mut pos: usize = 0;
+
+                                            for (i,username) in usernames.iter().enumerate() {
+                                                if username == username_ref {
+                                                    pos = i;
+                                                    break;
+                                                }
+                                            }
+
+                                            if usernames.len() > 0 {
+                                                usernames.remove(pos);
+                                            }
+
+                                            user_info.usernames = Some(usernames);
+
+                                            self.users.insert(&self.env().caller(), &user_info);
+
+                                            // Give the username to the new user.
+                                            if let Some(mut user_info) = self.users.get(&self.env().caller()) {
+
+                                                let mut usernames = Vec::new();
+
+                                                if let Some(existing) = user_info.usernames {
+
+                                                    usernames = existing;
+
+                                                }
+
+                                                usernames.push(username_ref.into());
+
+                                                user_info.usernames = Some(usernames);
+                                                user_info.balance += transferred - sale.price;
+
+                                                self.users.insert(&self.env().caller(), &user_info);
+
+                                            } else {
+
+                                                let mut usernames = Vec::<Username>::new();
+                                                usernames.push(username_ref.into());
+
+                                                let new_user_info = UserInfo {
+                                                    usernames: Some(usernames),
+                                                    balance: transferred - sale.price,
+                                                };
+
+                                                self.users.insert(&self.env().caller(), &new_user_info);
+
+                                            }
+
+                                            return Ok(())
+                                        } else {
+
+                                            return Err(Error::UnexpectedInternalError);
+
+                                        }
 
                                     } else {
 
-                                        let new_user_info = UserInfo {
-                                            usernames: None,
-                                            balance: transferred,
-                                        };
+                                        if let Some(mut user_info) = self.users.get(&self.env().caller()) {
 
-                                        self.users.insert(&self.env().caller(),&new_user_info);
+                                            user_info.balance += transferred;
+
+                                            self.users.insert(&self.env().caller(), &user_info);
+
+                                        } else {
+
+                                            let new_user_info = UserInfo {
+                                                usernames: None,
+                                                balance: transferred,
+                                            };
+
+                                            self.users.insert(&self.env().caller(),&new_user_info);
+
+                                        }
+
+                                        return Err(Error::PaymentFailed {
+                                            received: transferred,
+                                            required: sale.price,
+                                            missing: sale.price - transferred,
+                                        });
 
                                     }
-
-                                    return Err(Error::PaymentFailed {
-                                        received: transferred,
-                                        required: sale.price,
-                                        missing: sale.price - transferred,
-                                    });
-
                                 }
                                 
+                            } else {
+
+                                return Err(Error::UnexpectedInternalError);
+
                             }
 
                         }
@@ -1077,7 +1125,7 @@ mod transmitter {
     #[cfg(test)]
     mod tests {
 
-        ?use super::*;
+        // use super::*;
 
         /// We test a simple use case of our contract.
         #[ink::test]
@@ -1135,28 +1183,6 @@ mod transmitter {
                             )
                 };
             }
-
-            // macro_rules! call_dry_run {
-
-            //     (alice : $fn_name:tt, pay $amnt:tt) => {
-            //         client.call_dry_run(
-            //             &ink_e2e::alice(),
-            //             &$fn_name,
-            //             $amnt,
-            //             None)
-            //             .await
-            //     };
-
-            //     (bob : $fn_name:tt, pay $amnt:tt) => {
-            //         client.call_dry_run(
-            //             &ink_e2e::bob(),
-            //             &$fn_name,
-            //             $amnt,
-            //             None)
-            //             .await
-            //     };
-
-            // }
 
             macro_rules! get_names {
                 () => {
