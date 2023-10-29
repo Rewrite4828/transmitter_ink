@@ -1163,6 +1163,18 @@ mod transmitter {
 
         }
 
+        #[ink(message)] 
+        pub fn co_get_balance(&self) -> Result<Balance,Error> {
+
+            if self.owner.account_id != self.env().caller() {
+
+                return Err(Error::NotContractOwner);
+
+            }
+
+            return Ok(self.owner.balance);
+        }
+
         /// Attempts to withdraw a specific amount from the owner's balance. Can only be called by the contract owner.
         #[ink(message)]
         pub fn co_withdraw_amount(&mut self, balance: Balance) -> Result<(),Error> {
@@ -1231,6 +1243,8 @@ mod transmitter {
 
     }
 
+
+    // WARNING: Tests are incomplete. I chose to test manually using 'contracts-ui.substrate.io'
 
     #[cfg(test)]
     mod tests {
